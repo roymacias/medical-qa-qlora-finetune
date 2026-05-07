@@ -1,0 +1,117 @@
+{
+  "seed": 42,
+  "tokenizer": "google/gemma-3-4b-it",
+  "max_length": 1024,
+  "attrition": {
+    "MedMCQA": {
+      "raw": 187005,
+      "filtered": 145206,
+      "deduplicated": 124388,
+      "no_leakage": 124388,
+      "after_oov": 124388
+    },
+    "MedQA": {
+      "raw": 1273,
+      "filtered": 1273,
+      "deduplicated": 1273,
+      "no_leakage": 1273,
+      "after_oov": 1273
+    }
+  },
+  "length_percentiles": [
+    {
+      "dataset": "MedMCQA (full)",
+      "p50": 201,
+      "p90": 380,
+      "p95": 477,
+      "p99": 768,
+      "max": 4901
+    },
+    {
+      "dataset": "MedQA (user-only)",
+      "p50": 256,
+      "p90": 376,
+      "p95": 425,
+      "p99": 503,
+      "max": 979
+    }
+  ],
+  "letter_balance_pct": {
+    "MedMCQA": {
+      "A": 28.7801,
+      "B": 26.0451,
+      "C": 23.3302,
+      "D": 21.8446
+    },
+    "MedQA": {
+      "A": 27.7298,
+      "B": 24.2734,
+      "C": 27.1799,
+      "D": 20.817
+    }
+  },
+  "specialty_counts": {
+    "Medicine": 12039,
+    "Surgery": 11612,
+    "Anatomy": 10470,
+    "Pathology": 9600,
+    "Pharmacology": 8907,
+    "Gynaecology & Obstetrics": 8227,
+    "Social & Preventive Medicine": 7632,
+    "Microbiology": 7230,
+    "Physiology": 6332,
+    "Pediatrics": 6009,
+    "Biochemistry": 5914,
+    "Ophthalmology": 4881,
+    "Forensic Medicine": 4353,
+    "Dental": 3460,
+    "Radiology": 3286,
+    "Psychiatry": 3183,
+    "ENT": 3166,
+    "Anaesthesia": 2393,
+    "Unknown": 2386,
+    "Orthopaedics": 2019,
+    "Skin": 1289
+  },
+  "oov": {
+    "medmcqa": {
+      "total_tokens": 29579163,
+      "unk": 0
+    },
+    "medqa": {
+      "total_tokens": 342494,
+      "unk": 0
+    }
+  },
+  "truncation": {
+    "medmcqa": {
+      "truncated": 435,
+      "total": 124388
+    },
+    "medqa": {
+      "truncated": 0,
+      "total": 1273
+    }
+  },
+  "descriptive_stats": {
+    "MedMCQA": {
+      "Total questions": 124388.0,
+      "Mean question length (tokens)": 19.11,
+      "Mean option length (tokens)": 4.29,
+      "Mean explanation length (tokens)": 120.01,
+      "Number of specialties": 21.0
+    },
+    "MedQA": {
+      "Total questions": 1273.0,
+      "Mean question length (tokens)": 174.03,
+      "Mean option length (tokens)": 5.66,
+      "Mean explanation length (tokens)": NaN,
+      "Number of specialties": NaN
+    }
+  },
+  "pool_sizes": {
+    "medmcqa_train": 122315,
+    "medmcqa_validation": 2073,
+    "medqa_test": 1273
+  }
+}
