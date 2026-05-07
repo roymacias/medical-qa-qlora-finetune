@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Data — not versioned in git (sizes exceed GitHub limits; fully reproducible).
+# Raw data is rebuilt with `python -m src.data.extract`.
+data/raw/*
+data/interim/*
+!data/raw/README.md
+!data/interim/README.md
+!data/**/.gitkeep
+
+# Hugging Face caches
+.cache/huggingface/
+
