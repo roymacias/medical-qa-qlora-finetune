@@ -228,3 +228,11 @@ data/interim/*
 # Hugging Face caches
 .cache/huggingface/
 
+# Evaluation pipeline outputs under artifacts/{model}/...
+# Versioned (allowlist): metrics.json.
+# Everything else (HuggingFace weight/tokenizer cache, predictions JSONL,
+# trained adapter, training checkpoints, future subdirs) is excluded;
+# all of it is reproducible from configs + the eval/training pipelines.
+artifacts/*/*
+!artifacts/*/metrics.json
+

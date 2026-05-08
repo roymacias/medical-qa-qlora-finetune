@@ -516,7 +516,7 @@ Del pool MedQA `test` limpio (_1,273_ ejemplos disponibles) se utilizan todos lo
 
 | Conjunto  | Tamaño efectivo | Origen | Uso |
 |---|---|---|---|
-| Entrenamiento  | _5000_ | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
+| Entrenamiento  | _50000_ | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
 | Validación durante entrenamiento | _500_ | MedMCQA `validation` limpio, muestreo estratificado | Eval intermedia (cada N pasos) |
 | Evaluación in-distribution | _1,573_ | MedMCQA `validation` limpio, muestreo estratificado disjunto | Métrica final in-distribution |
 | Evaluación out-of-distribution | todos los disponibles | _1,273_ | MedQA `test` limpio íntegro | Métrica final out-of-distribution |
