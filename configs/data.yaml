@@ -1,0 +1,39 @@
+# Configuration for the data build pipeline (src/data/build.py).
+#
+# Run with defaults:
+#     python -m src.data.build
+# Run with a different config:
+#     python -m src.data.build --config configs/data-other.yaml
+#
+# ---------------------------------------------------------------------------
+# Reference pool sizes after preprocessing (see reports/eda report/metadata.json).
+# Targets below must respect these maxes; if a target exceeds the available
+# pool, the build logs a WARNING and falls back to using all available
+# examples (no error).
+#
+#     MedMCQA train pool:        122,315 examples
+#     MedMCQA validation pool:     2,073 examples (split between val + test_id)
+#     MedQA test (test_ood pool):  1,273 examples (used in full, no target)
+# ---------------------------------------------------------------------------
+
+# Random seed for reproducibility
+seed: 42
+
+splits:
+  # Stratified sample drawn from MedMCQA train pool, partitioned by
+  # `subject_name` to preserve the natural specialty distribution.
+  train_size: 50000
+
+  # Stratified sample drawn from MedMCQA validation pool for monitoring during
+  # training. The IN-DISTRIBUTION TEST split (`test_id`) is derived
+  # automatically as the COMPLEMENT of `val_size` within the validation pool:
+  #
+  #     test_id_size = pool_validation - val_size
+  #
+  # Edge case: if `val_size >= pool_validation` the validation pool is
+  # exhausted and no examples remain for `test_id` from there. The build then
+  # falls back to taking 10% of the train pool as `test_id` (stratified by
+  # specialty and excluded from the train sample to preserve no-leakage), and
+  # logs a WARNING. To keep `test_id` sourced from validation, set `val_size`
+  # below the validation pool size (recommended: 10% of the training pool).
+  val_size: 500
