@@ -40,7 +40,7 @@ Cuantificar empíricamente en qué medida un fine-tune eficiente en parámetros 
 
 ## 3.1 Modelo base
 
-El modelo base elegido es **Gemma-3-4B-it**, una variante instruction-tuned de la familia Gemma 3 de Google, con aproximadamente 4 mil millones de parámetros. La versión "-it" indica que ya pasó por instruction tuning y alineamiento generales por parte de Google, por lo que es capaz de seguir instrucciones desde el primer prompt. El modelo soporta contextos de hasta 128k tokens; la política de truncamiento aplicada al corpus de entrenamiento se especifica en la sección de Datos.
+El modelo base elegido es **Gemma-3-4B-it**, una variante instruction-tuned de la familia Gemma 3 de Google, con aproximadamente 4 mil millones de parámetros. La versión "-it" indica que ya pasó por instruction tuning y alineamiento generales por parte de Google, por lo que es capaz de seguir instrucciones desde el primer prompt con una ventana de contexto de hasta 128k tokens.
 
 Tres razones soportan esta elección:
 
@@ -52,19 +52,19 @@ Tres razones soportan esta elección:
 
 ## 3.2 Por qué la arquitectura Transformer es adecuada
 
-Gemma-3-4B-it es un **transformer decoder-only autoregresivo**, la familia arquitectónica que domina actualmente la generación de texto (GPT, Claude, Llama, Gemma, etc.). Conviene revisar por qué esta arquitectura es particularmente apta para nuestra tarea.
+Gemma-3-4B-it es un *transformer decoder-only autoregresivo*, la familia arquitectónica que domina actualmente la generación de texto (GPT, Claude, Llama, Gemma, etc.). Conviene revisar por qué esta arquitectura es particularmente apta para la tarea.
 
 ### Atención: el corazón del modelo
 
-El componente central del Transformer es el **mecanismo de atención**. En cada capa, para cada posición de la secuencia, el modelo calcula qué tan relevantes son las posiciones anteriores y combina sus representaciones de forma ponderada. En términos prácticos: cuando el modelo va a predecir el siguiente token, tiene acceso completo y selectivo a todo lo dicho antes.
+El componente central del Transformer es el *mecanismo de atención*. En cada capa, para cada posición de la secuencia, el modelo calcula qué tan relevantes son las posiciones anteriores y combina sus representaciones de forma ponderada. En términos prácticos: cuando el modelo va a predecir el siguiente token, tiene acceso completo y selectivo a todo lo dicho antes.
 
 Esto es exactamente lo que se necesita para razonamiento clínico sobre viñetas largas: un caso puede tener un dato crítico (por ejemplo, "elevación del ST en II, III, aVF") al inicio de la viñeta y la pregunta clave varios cientos de tokens después. La atención permite "regresar" a ese dato con precisión cuando es necesario, capacidad ausente en arquitecturas recurrentes anteriores (LSTM, GRU).
 
-Gemma 3 usa una variante eficiente llamada **Grouped-Query Attention (GQA)**, que reduce el consumo de memoria durante la generación sin pérdida significativa de calidad — útil cuando se generan cadenas de razonamiento extensas.
+Gemma 3 usa una variante eficiente llamada *Grouped-Query Attention (GQA)*, que reduce el consumo de memoria durante la generación sin pérdida significativa de calidad — útil cuando se generan cadenas de razonamiento extensas.
 
-### Otros ingredientes
+### Otros componentes
 
-Los componentes que completan el bloque transformer son:
+Otros componentes adecuados dentro de la arquitectura seleccionada:
 
 - **RoPE (Rotary Position Embeddings)** para codificar la posición de cada token de forma que el modelo entienda el orden secuencial.
 - **GeGLU**, una función de activación con compuerta usada en el MLP de cada bloque, que da más capacidad expresiva que activaciones simples como ReLU.
@@ -72,23 +72,23 @@ Los componentes que completan el bloque transformer son:
 
 ### Capacidad generativa y espacio latente
 
-El modelo termina con una proyección lineal sobre el vocabulario completo del tokenizador (~256k tokens en Gemma 3), produciendo logits que se convierten en una distribución de probabilidad sobre el siguiente token mediante softmax. La generación es autorregresiva: en cada paso se muestrea (según la temperatura, temperatura de cero para selecciona greedy) un token, se concatena al contexto y se repite.
+El modelo termina con una proyección lineal sobre el vocabulario completo del tokenizador (~256Ki tokens en Gemma 3), produciendo logits que se convierten en una distribución de probabilidad sobre el siguiente token mediante softmax. La generación es autorregresiva: en cada paso se muestrea (según la temperatura, temperatura de cero para selección greedy) un token, se concatena al contexto y se repite.
 
 Las representaciones ocultas del modelo constituyen un espacio latente. Este espacio fue moldeado durante el preentrenamiento masivo para codificar relaciones semánticas, sintácticas, factuales y multilingües del corpus de entrenamiento. Es en este espacio donde residirá el conocimiento médico latente del modelo: las asociaciones entre síntomas y diagnósticos, los mecanismos farmacológicos, los patrones de razonamiento clínico observados en los textos de preentrenamiento. El fine-tuning de dominio actúa precisamente sobre este espacio, reorganizando localmente las regiones relevantes sin reaprender la estructura general del lenguaje. Es por esta misma razón que el conocimiento aprendido en inglés puede transferirse a otros idiomas, donde el conocimiento sin importar el idioma se proyecta a regiones cercanas del mismo espacio conceptual.
 
 ## 3.3 Configuración del fine-tuning eficiente: QLoRA
 
-Sobre el modelo base se aplica **QLoRA** (Dettmers et al. 2023), un método de fine-tuning eficiente en parámetros que combina dos técnicas independientes:
+Sobre el modelo base se aplica **_QLoRA_** (Dettmers et al. 2023), un método de fine-tuning eficiente en parámetros que combina dos técnicas independientes:
 
 ### Cuantización del modelo base a 4 bits
 
-Los pesos del modelo base se almacenan en formato **NF4 (4-bit NormalFloat)**, una codificación de precisión reducida diseñada específicamente para distribuciones de pesos cercanas a la normal estándar (la distribución empírica de pesos de un transformer preentrenado). Cada peso original en bf16 (16 bits) se mapea al cuantil más cercano de una grilla de 16 valores derivada de la distribución normal. Adicionalmente se aplica **doble cuantización**: las constantes de escala de la cuantización se cuantizan a su vez, ahorrando ~0.5 bits por parámetro.
+Los pesos del modelo base se almacenan en formato *NF4 (4-bit NormalFloat)*, una codificación de precisión reducida diseñada específicamente para distribuciones de pesos cercanas a la normal estándar (la distribución empírica de pesos de un transformer preentrenado). Cada peso original en bf16 (16 bits) se mapea al cuantil más cercano de una grilla de 16 valores derivada de la distribución normal. Adicionalmente se aplica doble cuantización: las constantes de escala de la cuantización se cuantizan a su vez, ahorrando ~0.4 bits por parámetro.
 
-El resultado: el modelo base ocupa aproximadamente un cuarto de la memoria que ocuparía en bf16. Para Gemma-3-4B, eso es ~2 GB en lugar de ~8 GB. Durante el forward pass, los pesos cuantizados se descomprimen a bf16 sobre la marcha para ejecutar las operaciones matriciales.
+Para el forward pass, los pesos cuantizados se descomprimen sobre la marcha al formato de cómputo de adaptadores (Compute Dtype) para ejecutar las operaciones matriciales.
 
 ### Adaptadores LoRA
 
-Los pesos cuantizados del modelo base se mantienen **congelados** durante todo el entrenamiento. Sobre las matrices de proyección lineal seleccionadas se inserta una descomposición de bajo rango: para una matriz original $W \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$, se añaden dos matrices $A \in \mathbb{R}^{r \times d_{\text{in}}}$ y $B \in \mathbb{R}^{d_{\text{out}} \times r}$ con $r \ll \min(d_{\text{in}}, d_{\text{out}})$. La salida modificada se calcula como:
+Los pesos cuantizados del modelo base se mantienen congelados durante todo el entrenamiento. Sobre las matrices de proyección lineal seleccionadas se inserta una descomposición de bajo rango: para una matriz original $W \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$, se añaden dos matrices $A \in \mathbb{R}^{r \times d_{\text{in}}}$ y $B \in \mathbb{R}^{d_{\text{out}} \times r}$ con $r \ll \min(d_{\text{in}}, d_{\text{out}})$. La salida modificada se calcula como:
 
 $$h = Wx + \frac{\alpha}{r} \cdot BAx$$
 
@@ -105,9 +105,7 @@ Solo $A$ y $B$ son entrenables y están en bf16. El producto $BA$ representa una
 | Cómputo de adaptadores | bf16 | Coincide con la precisión nativa de Gemma 3 en TPU/GPU modernas |
 | Módulos objetivo | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` | Aplicar LoRA a la atención completa (Q,K,V,O) y al MLP completo (gate, up, down) maximiza la cobertura sin entrenar embeddings ni LM head |
 
-Aplicar LoRA a los siete módulos objetivo (en lugar de solo Q,V como en algunas convenciones tempranas) es la práctica actual recomendada por trabajos como el reporte oficial de PEFT y el paper de QLoRA.
-
-El número total de parámetros entrenables debe de representar aproximadamente **0.5–1% del total** del modelo. El resto (~99%) permanece congelado y cuantizado.
+Aplicar LoRA a los siete módulos objetivo es la práctica actual recomendada por trabajos como el reporte oficial de PEFT y el paper de QLoRA.
 
 ---
 
@@ -115,7 +113,7 @@ El número total de parámetros entrenables debe de representar aproximadamente 
 
 ### Tokenizador
 
-Gemma 3 utiliza un tokenizador **SentencePiece** con vocabulario de aproximadamente **256.000 tokens**, entrenado sobre el corpus multilingüe de preentrenamiento. Es idéntico al tokenizador de MedGemma, lo que garantiza que los dos modelos comparados procesan la entrada con el mismo nivel de granularidad léxica.
+Gemma 3 utiliza un tokenizador *SentencePiece* con vocabulario de aproximadamente 256Ki tokens, entrenado sobre el corpus multilingüe de preentrenamiento. Es idéntico al tokenizador de MedGemma, lo que garantiza que los dos modelos comparados procesan la entrada con el mismo nivel de granularidad léxica.
 
 ### Chat template
 
@@ -130,7 +128,7 @@ Gemma 3 espera un formato de conversación delimitado por tokens especiales de t
 <end_of_turn>
 ```
 
-Este es el formato que el modelo aprendió a seguir durante su instruction tuning original y el que se utilizará.
+Este es el formato que el modelo aprendió a seguir durante su instruction tuning original y el que se va a utilizar.
 
 ### Entrada del modelo
 
@@ -158,7 +156,7 @@ Este texto se tokeniza, produciendo una secuencia de identificadores enteros que
 
 ### Salida del modelo
 
-A partir del último token de la entrada, el modelo genera autorregresivamente: en cada paso produce una distribución de probabilidad sobre los 256k tokens del vocabulario, se selecciona uno (greedy o por sampling), se añade al contexto, y se repite hasta encontrar el token `<end_of_turn>` o alcanzar `max_new_tokens` (especificado en la s). La salida típica:
+A partir del último token de la entrada, el modelo genera autorregresivamente: en cada paso produce una distribución de probabilidad sobre los 256Ki tokens del vocabulario, se selecciona el token con la mayor probabilidad mediante *Greedy Decoding* (garantizando así determinismo y reproducibilidad, comportamiento requerido en evaluación médica), se añade al contexto, y se repite hasta encontrar el token `<end_of_turn>` o alcanzar `max_new_tokens`. La salida típica:
 
 ```text
 <start_of_turn>model
@@ -211,9 +209,9 @@ Answer: B
 │     │  LM head → logits sobre vocabulario                 │   │
 │     │       │                                             │   │
 │     │       ▼                                             │   │
-│     │  Argmax (temperature) → token siguiente             │   │
+│     │  Greedy Decoding → token siguiente                  │   │
 │     └─────────────────────────────────────────────────────┘   │
-│     Iteración hasta <end_of_turn> o max_new_tokens            │
+│     Predecir siguiente token (autoregresivo) hasta            │    │       <end_of_turn> o max_new_tokens                          │
 └──────────────────────────────┬────────────────────────────────┘
                                │
                                ▼
@@ -226,12 +224,8 @@ Answer: B
 ┌───────────────────────────────────────────────────────────────┐
 │  6. Extracción de respuesta vía regex sobre patrones          │
 │     "Answer: ([A-D])" → letra predicha                        │
-└──────────────────────────────┬────────────────────────────────┘
-                               │
-                               ▼
-┌───────────────────────────────────────────────────────────────┐
-│  7. Predecir siguiente token (autoregresivo)                  │
 └───────────────────────────────────────────────────────────────┘
+        
 
 ```
 
@@ -240,12 +234,12 @@ Answer: B
 | Alternativa | Razón de descarte |
 |---|---|
 | **Full fine-tuning de Gemma-3-4B** | Requiere >30 GB de VRAM solo para gradientes y estados del optimizador. Infactible en hardware disponible. |
-| **LoRA sin cuantización (base en bf16)** | Solo el modelo base en bf16 podría ocuar 8 GB; sumando activaciones y demás, no es factible. |
+| **LoRA sin cuantización (base en bf16)** | Solo el modelo base en bf16 podría ocupar 8 GB; sumando activaciones y demás, no es factible. |
 | **Modelo base Llama-3.1-8B u otro de familia distinta** | Rompe la comparación causal contra MedGemma; las diferencias observadas no podrían ser atribuibles a la adaptación de dominio sino al modelo base. |
 | **Modelo más pequeño (Gemma-3-1B)** | Capacidad insuficiente para razonamiento clínico complejo según evidencia consistente en la literatura. |
 | **Modelo más grande (Gemma-3-27B)** | No cabe en hardware disponible ni con QLoRA agresivo. Requeriría hardware industrial. |
 
-# 4. Datos
+# 4. Estrategia de Datos
 
 ## 4.1 Datasets utilizados
 
@@ -258,9 +252,9 @@ El corpus de datos del proyecto se compone de dos datasets con roles diferenciad
 
 ### MedMCQA
 
-Dataset de preguntas tipo opción múltiple del examen de admisión a residencia médica en India. Contiene preguntas de **21 especialidades médicas** (anatomía, fisiología, farmacología, patología, microbiología, medicina interna, cirugía, ginecología, pediatría, etc.) con cuatro opciones de respuesta. Una fracción mayoritaria de las preguntas incluye un campo `explanation` con la justificación de la respuesta correcta extraída del libro de texto de referencia, lo que permite usarlo como señal de cadena de razonamiento (CoT) sin necesidad de generación sintética.
+Dataset de preguntas tipo opción múltiple del examen de admisión a residencia médica en India. Contiene preguntas de 21 especialidades médicas (anatomía, fisiología, farmacología, patología, microbiología, medicina interna, cirugía, ginecología, pediatría, etc.) con cuatro opciones de respuesta. Una fracción mayoritaria de las preguntas incluye un campo `explanation` con la justificación de la respuesta correcta extraída del libro de texto de referencia, lo que permite usarlo como señal de cadena de razonamiento (CoT) sin necesidad de generación sintética.
 
-**Por qué se elige como dataset de entrenamiento:**
+**Razones de elección como dataset de entrenamiento:**
 1. Es uno de los datasets MCQA médico más grande disponible públicamente, y es utilizado como benchmark de referencia citado en el reporte técnido de MedGemma.
 2. Incluye explicaciones nativas escritas por humanos, evitando depender de un teacher LLM externo para generar CoT.
 3. Cobertura amplia y balanceada de especialidades.
@@ -270,12 +264,12 @@ Dataset de preguntas tipo opción múltiple del examen de admisión a residencia
 
 Dataset de preguntas tipo USMLE, el examen de licenciatura médica estadounidense. La variante "4-options" reduce las preguntas originales de 5 a 4 opciones, alineando el formato con MedMCQA y permitiendo evaluar con un parser unificado.
 
-**Por qué se elige como evaluación out-of-distribution y no como entrenamiento:**
+**Razones de elección como evaluación out-of-distribution y no como entrenamiento:**
 1. Mantiene su rol como benchmark de referencia citado en el reporte técnico de MedGemma.
 2. Permite medir transferencia entre estilos de examen: las viñetas USMLE tienden a ser más largas y con razonamiento clínico más elaborado que las preguntas indias de admisión.
 3. Su tamaño compacto cabe íntegro dentro del cap de evaluación.
 
-A diferencia de MedMCQA, el dataset original de MedQA **no provee desglose por especialidad médica** como campo estructurado. Solo algunas versiones de la distribución incluyen un campo `meta_info` con el nivel del examen (Step 1 vs. Step 2&3). Por consiguiente, la evaluación sobre MedQA se realiza únicamente como **accuracy global sobre la respuesta correcta**, sin desglose por especialidad. El análisis por categoría se reporta exclusivamente sobre MedMCQA.
+A diferencia de MedMCQA, el dataset original de MedQA no provee desglose por especialidad médica como campo estructurado. Por consiguiente, la evaluación sobre MedQA se realiza únicamente como accuracy global sobre la respuesta correcta, sin desglose por especialidad. El análisis por categoría se reporta exclusivamente sobre MedMCQA.
 
 ---
 
@@ -309,7 +303,7 @@ Tras la deduplicación interna, se verifica que no haya overlap entre los dos da
 
 - **MedMCQA ∩ MedQA test**: comparación de hashes entre todas las preguntas limpias de MedMCQA y todas las preguntas limpias de MedQA test, para detectar duplicados cruzados (los datasets provienen de exámenes distintos pero podrían existir preguntas reusadas de bancos comunes).
 
-Cualquier overlap encontrado se elimina del lado de **MedQA** (no de MedMCQA), priorizando la integridad del conjunto de evaluación.
+Cualquier overlap encontrado se elimina del lado de MedQA (no de MedMCQA), priorizando la integridad del conjunto de evaluación.
 
 ### 4.2.4 Sanity checks automatizados
 
@@ -320,29 +314,29 @@ Sobre los corpus ya filtrados, deduplicados y libres de leakage se ejecutan cont
 Se computa el histograma de longitudes en tokens (post-tokenización con el tokenizador de Gemma 3) de los ejemplos formateados completos. Esta distribución informa la elección de `max_length` en §4.4.4.
 
 > ![Distribución de longitudes](../reports/figures/eda/length_distribution.png)
-> *Figura 4.1 — Distribución de longitudes (tokens) de ejemplos formateados en MedMCQA y MedQA tras filtrado. Generada por `notebooks/01_data_exploration.ipynb`.*
+> *Figura 4.1 — Distribución de longitudes (tokens) de ejemplos formateados en MedMCQA y MedQA tras filtrado.*
 
 | Percentil | MedMCQA (tokens) | MedQA (tokens) |
 |---|---|---|
-| p50 (mediana) | _[N]_ | _[N]_ |
-| p90 | _[N]_ | _[N]_ |
-| p95 | _[N]_ | _[N]_ |
-| p99 | _[N]_ | _[N]_ |
-| máximo | _[N]_ | _[N]_ |
+| p50 (mediana) | _201_ | _256_ |
+| p90 | _380_ | _376_ |
+| p95 | _477_ | _425_ |
+| p99 | _768_ | _503_ |
+| máximo | _4,901_ | _979_ |
 
 #### Distribución de letras correctas
 
-Verifica que la distribución A/B/C/D no esté sesgada (objetivo: ~25% cada una). 
+Verifica que la distribución A/B/C/D no esté sesgada. 
 
 > ![Balance A/B/C/D en MedMCQA y MedQA](../reports/figures/eda/letter_balance.png)
-> *Figura 4.2 — Distribución de letras correctas en MedMCQA y MedQA limpios. Generada por `notebooks/01_data_exploration.ipynb`.*
+> *Figura 4.2 — Distribución de letras correctas en MedMCQA y MedQA limpios.*
 
 #### Distribución de especialidades
 
-Se reporta la frecuencia de cada una de las 21 especialidades médicas en el corpus limpio de **MedMCQA**. Este desglose informa el muestreo estratificado en §4.5 y el análisis de accuracy por especialidad en Evaluación. **MedQA no dispone de esta información** (ver §4.1) y por tanto no aparece en este desglose.
+Se reporta la frecuencia de cada una de las 21 especialidades médicas en el corpus limpio de MedMCQA. Este desglose informa el muestreo estratificado en §4.5 y el análisis de accuracy por especialidad en Evaluación. MedQA no dispone de esta información (ver §4.1) y por tanto no aparece en este desglose.
 
 > ![Distribución de especialidades en MedMCQA](../reports/figures/eda/medmcqa_specialty_distribution.png)
-> *Figura 4.3 — Distribución de las 21 especialidades en MedMCQA limpio. Generada por `notebooks/01_data_exploration.ipynb`.*
+> *Figura 4.3 — Distribución de las 21 especialidades en MedMCQA limpio.*
 
 #### Tokens fuera de vocabulario
 
@@ -350,24 +344,24 @@ Se verifica que el tokenizador de Gemma 3 no produce tokens desconocidos (`<unk>
 
 | Métrica | MedMCQA | MedQA |
 |---|---|---|
-| Tokens totales en el corpus | _[N]_ | _[N]_ |
-| Tokens `<unk>` detectados | _[N]_ | _[N]_ |
-| Porcentaje de OOV | _[%]_ | _[%]_ |
-| Ejemplos descartados por corrupción | _[N]_ | _[N]_ |
+| Tokens totales en el corpus | _29,579,163_ | _342,494_ |
+| Tokens `<unk>` detectados | _0_ | _0_ |
+| Porcentaje de OOV | _0%_ | _0%_ |
+| Ejemplos descartados por corrupción | _0_ | _0_ |
 
-### 4.2.5 Resumen del filtrado final del corpus
+### 4.2.5 Resumen del corpus consolidado
 
 Tabla consolidada que reporta la reducción del corpus a través de las operaciones del preprocesamiento (filtrado, deduplicación, leakage, OOV).
 
 | Etapa | MedMCQA | MedQA `test` |
 |---|---|---|
-| Corpus crudo | _[N]_ | _[N]_ |
-| Tras filtrado de calidad | _[N]_ | _[N]_ |
-| Tras deduplicación | _[N]_ | _[N]_ |
-| Tras eliminación de leakage cruzado | _[N]_ | _[N]_ |
-| Tras eliminación de OOV (si aplica) | _[N]_ | _[N]_ |
-| **Corpus final** | **_[N]_** | **_[N]_** |
-| Pérdida total respecto al crudo (%) | _[%]_ | _[%]_ |
+| Corpus crudo | _187,005_ | _1,273_ |
+| Tras filtrado de calidad | _145,206_ | _1,273_ |
+| Tras deduplicación | _124,388_ | _1,273_ |
+| Tras eliminación de leakage cruzado | _124,388_ | _1,273_ |
+| Tras eliminación de OOV (si aplica) | _124,388_ | _1,273_ |
+| **Corpus final** | **_124,388_** | **_1,273_** |
+| Pérdida total respecto al crudo (%) | _33.48%_ | _0.0%_ |
 
  Para MedMCQA el corpus combina las particiones `train` y `validation` provistas originalmente por los autores del dataset; las etiquetas de partición se preservan internamente en cada ejemplo y se utilizan en §4.5 para construir los subconjuntos del experimento.
 
@@ -379,17 +373,18 @@ Las estadísticas siguientes describen el corpus tras el preprocesamiento de §4
 
 | Estadística | MedMCQA (post-preprocesamiento) | MedQA-4opt (test post-preprocesamiento) |
 |---|---|---|
-| Preguntas totales | _[N]_ | _[N]_ |
-| Longitud media de la pregunta (tokens) | _[N]_ | _[N]_ |
-| Longitud media de cada opción (tokens) | _[N]_ | _[N]_ |
-| Longitud media de la explicación (tokens) | _[N]_ | N/A |
-| Cobertura de categorías | 21 especialidades médicas | No disponible (ver §4.1) |
-| Balance de letras correctas (A/B/C/D) | _[% por opción]_ | _[% por opción]_ |
+| Preguntas totales | _124,388_ | _1,273_ |
+| Longitud media de la pregunta (tokens) | _19.11_ | _174.03_ |
+| Longitud media de cada opción (tokens) | _4.29_ | _5.66_ |
+| Longitud media de la explicación (tokens) | _120.01_ | N/A |
+| Cobertura de categorías | 21 especialidades médicas | No disponible |
+| Balance de letras correctas (A/B/C/D) | _28.79%, 26.05%, 23.33%, 21.84%_ | _27.73%, 24.27%, 27.18%, 20.81%_ |
 
 **Notas:**
 
 - Las longitudes se reportan en tokens del tokenizador SentencePiece de Gemma 3, no en palabras, para consistencia con la unidad usada durante entrenamiento e inferencia.
 - "Post-preprocesamiento" significa después de filtrado, deduplicación, eliminación de leakage y eliminación de OOV (§4.2). Es el corpus efectivo del que se sortean los splits en §4.5.
+- Sobre el balance de opciones correctas: El ligero desbalance observado en la distribución de respuestas (con una leve preponderancia hacia la opción 'A' y menor frecuencia en la 'D') no representa un problema metodológico crítico. Dado que el fine-tuning penaliza la entropía cruzada de toda la cadena de razonamiento (CoT) y no solo la clasificación final, el modelo es forzado a aprender la inferencia clínica subyacente en lugar de explotar heurísticas o sesgos estadísticos de posición
 
 ---
 
@@ -435,14 +430,14 @@ Donde `{letter_from_cop}` se obtiene mapeando el índice numérico de la respues
 
 ### 4.4.4 Política de truncamiento
 
-La distribución de longitudes reportada en §4.2.4 informa el techo de truncamiento. Con un percentil 95 medido en _[insertar valor]_ tokens y un percentil 99 en _[insertar valor]_ tokens sobre el corpus de entrenamiento (MedMCQA), se establece:
+La distribución de longitudes reportada en §4.2.4 informa el techo de truncamiento. Con un percentil 95 medido en _477_ tokens y un percentil 99 en _768_ tokens sobre el corpus de entrenamiento (MedMCQA), se establece:
 
 - **`max_length = 1024` tokens**: techo aplicado durante la tokenización.
-- **Estrategia**: `truncation="longest_first"`, aplicado preferentemente a la **explicación** (no a la pregunta ni a las opciones), porque la pregunta y las opciones son contenido crítico que el modelo debe ver íntegro para aprender la asociación correcta.
+- **Estrategia**: `truncation="longest_first"`, aplicado preferentemente a la explicación (no a la pregunta ni a las opciones), porque la pregunta y las opciones son contenido crítico que el modelo debe ver íntegro para aprender la asociación correcta.
 - **Ejemplos que excederían 1024 tokens**: se truncan según la política anterior (no se descartan), preservando pregunta + opciones + respuesta final.
 
 **Justificación de 1024 como techo:**
-- Cubre el ~95% de los ejemplos sin truncamiento, según la distribución empírica medida en §4.2.4.
+- Cubre el ~99% de los ejemplos sin truncamiento después de realizar el análisis exploratorio.
 - Es potencia de 2, lo que aprovecha alineamiento con kernels GPU.
 - Subir a 2048 doblaría el costo computacional de la atención sin beneficio para la inmensa mayoría de los ejemplos.
 
@@ -450,22 +445,24 @@ La distribución de longitudes reportada en §4.2.4 informa el techo de truncami
 
 | Métrica | Valor |
 |---|---|
-| Ejemplos truncados | _[N]_ |
-| Porcentaje del corpus | _[%]_ |
-
-Si la tasa supera el 10% se reconsidera el techo (subir a 1280 o 1536, validando memoria).
+| Ejemplos truncados | _435_ |
+| Porcentaje del corpus | _0.35%_ |
 
 ### 4.4.5 Padding
 
-Padding **dinámico al máximo del batch** (no al `max_length` global), implementado vía `DataCollatorForLanguageModeling` con `pad_to_multiple_of=8` para aprovechar tensor cores en hardware moderno. Esto reduce el cómputo desperdiciado en tokens de relleno comparado con padding estático a 1024.
+Las secuencias formateadas tienen longitud variable. Durante el entrenamiento se agrupan en batches, lo que obliga a igualar longitudes dentro de cada batch mediante tokens de relleno (*padding*). La política aplicada es padding dinámico al máximo de cada batch en lugar de padding estático al techo global `max_length = 1024`. La razón es eficiencia: cuando un batch contiene secuencias substancialmente más cortas que el techo, el padding estático desperdicia cómputo en posiciones que no aportan señal de aprendizaje, mientras que el padding dinámico solo rellena hasta lo necesario para alinear las secuencias del batch en cuestión.
+
+Esta operación es propia del *runtime* de entrenamiento, no del preprocesamiento: el corpus que sale de la presente sección contiene secuencias sin padding. La implementación concreta del *data collator* responsable del padding, junto con la configuración fina se detalla en §5.
 
 ### 4.4.6 Etiquetado de labels (`-100`)
 
-Aunque la mecánica del loss masking pertenece a la sección de Entrenamiento, el formateo deja los datos preparados: los tokens del prompt se etiquetan con `label = -100` para ser ignorados por la cross-entropy de PyTorch, dejando solo los tokens de la respuesta del modelo (razonamiento + letra + EOS) como objetivos de aprendizaje. Esto se implementa con `DataCollatorForCompletionOnlyLM` (HuggingFace TRL), que detecta automáticamente el delimiter `<start_of_turn>model` y enmascara todo lo anterior.
+Durante el entrenamiento, la pérdida de cross-entropy debe calcularse únicamente sobre los tokens de la respuesta del modelo —cadena de razonamiento, letra final y token de fin de turno—, no sobre los tokens del prompt del usuario. La razón conceptual es que el prompt es contexto fijo dado al modelo; obligarlo a "predecir" su propio prompt no aporta señal útil y diluiría el gradiente entre miles de tokens de pregunta y opciones. Para lograr ese filtrado, los tokens del prompt se etiquetan con el valor especial `-100`, que la implementación de cross-entropy de PyTorch interpreta como "ignorar en el cálculo del loss".
+
+Esta mecánica es propia del _loop_ de entrenamiento. El corpus que sale del preprocesamiento contiene los pares prompt-respuesta sin etiquetado de loss; el etiquetado con `-100` se aplica al construir cada batch en tiempo de entrenamiento detallado en §5.
 
 ### 4.4.7 Inspección manual
 
-Se revisa una muestra aleatoria de 50 ejemplos del corpus formateado (post-tokenización, decodificados de vuelta a texto) para verificar:
+Se revisa una muestra aleatoria de 10 ejemplos del corpus formateado (post-tokenización, decodificados de vuelta a texto) para verificar:
 
 - Coherencia entre pregunta, opciones y respuesta correcta.
 - Calidad de la explicación como cadena de razonamiento.
@@ -473,58 +470,56 @@ Se revisa una muestra aleatoria de 50 ejemplos del corpus formateado (post-token
 - Ausencia de artefactos de extracción (HTML residual, caracteres mal codificados).
 - Aplicación correcta del chat template y tokens especiales.
 
-La inspección se realiza en `notebooks/01_data_exploration.ipynb` (sección final). Los hallazgos cualitativos no se incluyen aquí — el reporte simplemente confirma que la inspección fue ejecutada y no se detectaron problemas mayores. Si se detectan problemas, se documentan y se ajustan los filtros o el formato.
+La inspección se realiza en `notebooks/01_data_exploration.ipynb`. Los hallazgos cualitativos no se incluyen aquí — el reporte simplemente confirma que la inspección fue ejecutada y no se detectaron problemas mayores.
 
 ---
 
 ## 4.5 Splits del experimento
 
-A partir del corpus limpio producido en §4.2, se construyen los subconjuntos definitivos que se usan para monitoreo durante el entrenamiento y validación, y la evaluación final. La construcción se realiza por **muestreo estratificado** sobre las particiones originales del dataset (`train`, `validation`, `test`).
+A partir del corpus limpio producido en §4.2, se construyen los subconjuntos definitivos que se usan para monitoreo durante el entrenamiento y validación, y la evaluación final. La construcción se realiza por muestreo estratificado sobre las particiones originales del dataset (`train`, `validation`, `test`).
 
 ### Pools disponibles tras preprocesamiento
 
 | Pool | Origen | Tamaño disponible |
 |---|---|---|
-| MedMCQA `train` limpio | partición original `train` de MedMCQA tras §4.2 | _[N_train]_ |
-| MedMCQA `validation` limpio | partición original `validation` de MedMCQA tras §4.2 | _[N_val]_ |
-| MedQA `test` limpio | partición `test` de MedQA tras §4.2 | _[N_medqa]_ |
+| MedMCQA `train` limpio | partición original `train` de MedMCQA tras §4.2 | _122,315_ |
+| MedMCQA `validation` limpio | partición original `validation` de MedMCQA tras §4.2 | _2,073_ |
+| MedQA `test` limpio | partición `test` de MedQA tras §4.2 | _1,273_ |
 
 ### Regla de muestreo
 
 Para cada subconjunto se define un objetivo de tamaño. La regla aplicada es:
 
-- Si el pool disponible **excede** el objetivo: se realiza muestreo estratificado al tamaño objetivo, conservando la distribución original de especialidades (en MedMCQA) o sin estratificación (en MedQA, que no dispone de etiqueta de categoría).
-- Si el pool disponible **no alcanza** el objetivo: se utilizan todos los ejemplos disponibles, dejando registrado el tamaño efectivo en el reporte.
+- Si el pool disponible excede el objetivo: se realiza muestreo estratificado al tamaño objetivo, conservando la distribución original de especialidades (en MedMCQA) o sin estratificación (en MedQA, que no dispone de etiqueta de categoría).
+- Si el pool disponible no alcanza el objetivo: se utilizan todos los ejemplos disponibles, dejando registrado el tamaño efectivo en el reporte.
 
 
 ### Construcción de los subconjuntos
 
 #### Conjunto de entrenamiento
 
-Del pool **MedMCQA `train` limpio** (_[N_train]_ ejemplos disponibles) se extrae un subconjunto estratificado por especialidad con objetivo **50,000 ejemplos**. Si el pool disponible supera 50,000 — esperado dado que MedMCQA `train` original contiene ~187k —, se aplica el muestreo. Si el pool fuera menor (no esperado), se usaría íntegro.
+Del pool MedMCQA `train` limpio (_122,315_ ejemplos disponibles) se extrae un subconjunto estratificado por especialidad con objetivo 50,000 ejemplos.
 
 #### Conjunto de validación durante el entrenamiento
 
-Del pool **MedMCQA `validation` limpio** (_[N_val]_ ejemplos disponibles) se extrae un primer subconjunto estratificado con objetivo **500 ejemplos** (relación a 10% del conjunto de entrenamiento), destinado al monitoreo de val accuracy intermedia durante el entrenamiento.
+Del pool MedMCQA `validation` limpio (_2,073_ ejemplos disponibles) se extrae un primer subconjunto estratificado con objetivo 500 ejemplos (relación a 10% del conjunto de entrenamiento), destinado al monitoreo de val accuracy intermedia durante el entrenamiento.
 
 #### Conjunto de evaluación in-distribution
 
-Del mismo pool **MedMCQA `validation` limpio**, **excluyendo los 500 del subconjunto anterior** para evitar leakage entre monitoreo y evaluación final, se extrae un segundo subconjunto estratificado con objetivo **2,000 ejemplos**. Esta es la métrica final in-distribution comparable entre los tres modelos del experimento.
-
-Si el pool de `validation` limpio fuera menor a 2,500 ejemplos (500 + 2,000), los objetivos se reducen proporcionalmente preservando la disjunción entre los dos subconjuntos.
+Del mismo pool MedMCQA `validation` limpio, excluyendo los 500 del subconjunto anterior para evitar leakage entre monitoreo y evaluación final, se extrae el segundo subconjunto estratificado de 1,573 ejemplos (_2,073_ - _500_ de validación). Esta es la métrica final in-distribution comparable entre los tres modelos del experimento.
 
 #### Conjunto de evaluación out-of-distribution
 
-Del pool **MedQA `test` limpio** (_[N_medqa]_ ejemplos disponibles) se utilizan **todos los ejemplos sin muestreo adicional**. 
+Del pool MedQA `test` limpio (_1,273_ ejemplos disponibles) se utilizan todos los ejemplos sin muestreo adicional. 
 
 ### Resumen final
 
-| Conjunto | Tamaño objetivo | Tamaño efectivo | Origen | Uso |
-|---|---|---|---|---|
-| Entrenamiento | 50,000 | _[N]_ | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
-| Validación durante entrenamiento | 500 | _[N]_ | MedMCQA `validation` limpio, muestreo estratificado | Eval intermedia (cada N pasos) |
-| Evaluación in-distribution | 2,000 | _[N]_ | MedMCQA `validation` limpio, muestreo estratificado disjunto | Métrica final in-distribution |
-| Evaluación out-of-distribution | todos los disponibles | _[N]_ | MedQA `test` limpio íntegro | Métrica final out-of-distribution |
+| Conjunto  | Tamaño efectivo | Origen | Uso |
+|---|---|---|---|
+| Entrenamiento  | _5000_ | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
+| Validación durante entrenamiento | _500_ | MedMCQA `validation` limpio, muestreo estratificado | Eval intermedia (cada N pasos) |
+| Evaluación in-distribution | _1,573_ | MedMCQA `validation` limpio, muestreo estratificado disjunto | Métrica final in-distribution |
+| Evaluación out-of-distribution | todos los disponibles | _1,273_ | MedQA `test` limpio íntegro | Métrica final out-of-distribution |
 
 
 # 5. Entrenamiento
