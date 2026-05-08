@@ -1,0 +1,36 @@
+# Horizontal evaluation config — same hyperparams across the 3 models so the
+# comparison is apples-to-apples. Per-model details live in configs/models/.
+#
+# Run with defaults:
+#     python -m src.pipelines.evaluation_pipeline --model gemma-3-4b-it
+# Override splits:
+#     python -m src.pipelines.evaluation_pipeline --model medgemma-4b-it --splits test_ood
+# Force re-inference:
+#     python -m src.pipelines.evaluation_pipeline --model gemma-3-4b-it --force
+
+seed: 42
+
+# Decoding kwargs forwarded to model.generate(). Greedy + max_new_tokens=512
+generation:
+  max_new_tokens: 512
+  do_sample: false
+  temperature: 1.0           # inert under greedy; kept explicit to avoid edge crashes
+  repetition_penalty: 1.0
+
+# Splits to evaluate. test_id is MedMCQA-derived (in-distribution), test_ood is
+# MedQA-derived (out-of-distribution).
+splits: [test_id, test_ood]
+
+# Filesystem layout. Paths are relative to the project root.
+data_dir: data/processed/splits
+output_root: artifacts        # artifacts/{model}/predictions/, artifacts/{model}/metrics.json
+reports_root: reports         # reports/qualitative/{model}/{split}.md
+
+# Cross-model qualitative analysis (run AFTER all 3 models finish inference,
+# via `python -m src.eval.qualitative`). Anchored on the fine-tune; same 5 IDs
+# used for the 3 models.
+qualitative:
+  base_model:     gemma-3-4b-it
+  finetune_model: gemma-3-4b-it-qlora-finetune
+  medgemma_model: medgemma-4b-it
+  splits: [test_id, test_ood]
