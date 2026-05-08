@@ -1,0 +1,56 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "id": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "question": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "opa": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "opb": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "opc": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "opd": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "cop": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "choice_type": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "exp": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "subject_name": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "topic_name": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "_split": {
+      "dtype": "string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}

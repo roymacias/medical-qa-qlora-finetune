@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-05-08T01:01:58+00:00",
+  "config_path": "configs\\data.yaml",
+  "seed": 42,
+  "config": {
+    "train_size": 50000,
+    "val_size": 500,
+    "test_id_size": "derived (complement of val_size in validation pool, or 10% of train pool fallback)"
+  },
+  "attrition": {
+    "MedMCQA": {
+      "raw": 187005,
+      "filtered": 145206,
+      "deduplicated": 124388,
+      "no_leakage": 124388,
+      "after_oov": 124388
+    },
+    "MedQA": {
+      "raw": 1273,
+      "filtered": 1273,
+      "deduplicated": 1273,
+      "no_leakage": 1273,
+      "after_oov": 1273
+    }
+  },
+  "pool_sizes": {
+    "medmcqa_train": 122315,
+    "medmcqa_validation": 2073,
+    "medqa_test": 1273
+  },
+  "splits_sizes": {
+    "train": 50000,
+    "validation": 500,
+    "test_id": 1573,
+    "test_ood": 1273
+  }
+}
