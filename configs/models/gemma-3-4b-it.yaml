@@ -1,0 +1,10 @@
+# Baseline: Gemma 3 4B IT, no domain adaptation.
+# Loaded directly from HuggingFace Hub.
+name: gemma-3-4b-it
+type: hf_pretrained
+model_id: google/gemma-3-4b-it
+tokenizer_id: google/gemma-3-4b-it
+torch_dtype: bfloat16
+load_in_4bit: false
+# Project-local cache so weights live with the project artifacts.
+cache_dir: artifacts/gemma-3-4b-it

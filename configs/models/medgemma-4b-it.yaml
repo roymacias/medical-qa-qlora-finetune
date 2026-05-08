@@ -1,0 +1,8 @@
+# Industrial reference: MedGemma 4B IT — Google's domain-adapted Gemma 3.
+name: medgemma-4b-it
+type: hf_pretrained
+model_id: google/medgemma-4b-it
+tokenizer_id: google/medgemma-4b-it
+torch_dtype: bfloat16
+load_in_4bit: false
+cache_dir: artifacts/medgemma-4b-it
