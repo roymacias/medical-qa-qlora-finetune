@@ -35,5 +35,6 @@ splits:
   # falls back to taking 10% of the train pool as `test_id` (stratified by
   # specialty and excluded from the train sample to preserve no-leakage), and
   # logs a WARNING. To keep `test_id` sourced from validation, set `val_size`
-  # below the validation pool size (recommended: 10% of the training pool).
+  # below the validation pool size (recommended: 1% of the training pool since 
+  # the validation pool contains only 2,703 examples).
   val_size: 500
