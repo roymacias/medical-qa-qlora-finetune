@@ -105,7 +105,7 @@ Solo $A$ y $B$ son entrenables y están en bf16. El producto $BA$ representa una
 | Cómputo de adaptadores | bf16 | Coincide con la precisión nativa de Gemma 3 en TPU/GPU modernas |
 | Módulos objetivo | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` | Aplicar LoRA a la atención completa (Q,K,V,O) y al MLP completo (gate, up, down) maximiza la cobertura sin entrenar embeddings ni LM head |
 
-Aplicar LoRA a los siete módulos objetivo es la práctica actual recomendada por trabajos como el reporte oficial de PEFT y el paper de QLoRA.
+Aplicar LoRA a los siete módulos objetivo es la práctica actual recomendada por trabajos como el reporte oficial de PEFT y el paper de QLoRA (Dettmers et al. 2023).
 
 ---
 
@@ -502,7 +502,7 @@ Del pool MedMCQA `train` limpio (_122,315_ ejemplos disponibles) se extrae un su
 
 #### Conjunto de validación durante el entrenamiento
 
-Del pool MedMCQA `validation` limpio (_2,073_ ejemplos disponibles) se extrae un primer subconjunto estratificado con objetivo 500 ejemplos (relación a 10% del conjunto de entrenamiento), destinado al monitoreo de val accuracy intermedia durante el entrenamiento.
+Del pool MedMCQA `validation` limpio (_2,073_ ejemplos disponibles) se extrae un primer subconjunto estratificado con objetivo 500 ejemplos, destinado al monitoreo de val accuracy intermedia durante el entrenamiento.
 
 #### Conjunto de evaluación in-distribution
 
@@ -516,10 +516,302 @@ Del pool MedQA `test` limpio (_1,273_ ejemplos disponibles) se utilizan todos lo
 
 | Conjunto  | Tamaño efectivo | Origen | Uso |
 |---|---|---|---|
-| Entrenamiento  | _50000_ | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
+| Entrenamiento  | _50,000_ | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
 | Validación durante entrenamiento | _500_ | MedMCQA `validation` limpio, muestreo estratificado | Eval intermedia (cada N pasos) |
 | Evaluación in-distribution | _1,573_ | MedMCQA `validation` limpio, muestreo estratificado disjunto | Métrica final in-distribution |
 | Evaluación out-of-distribution | todos los disponibles | _1,273_ | MedQA `test` limpio íntegro | Métrica final out-of-distribution |
 
 
 # 5. Entrenamiento
+
+Esta sección define el procedimiento de optimización por el cual el adaptador QLoRA se ajusta sobre el modelo base congelado para producir `gemma-3-4b-it-qlora-finetune`. Las decisiones arquitectónicas del adaptador (rango, alfa, dropout, cuantización, módulos objetivo) ya están definidas en §3.3; las decisiones de formato de los ejemplos y máscaras de pérdida en §4.4. La presente sección se restringe al lado de optimización: función de pérdida efectiva, optimizador, schedule de learning rate, composición del batch, duración, monitoreo durante el entrenamiento y selección del checkpoint final.
+
+## 5.1 Función de pérdida
+
+El criterio optimizado es la entropía cruzada token a token sobre las posiciones de respuesta del modelo, excluyendo las posiciones del prompt mediante el etiquetado `-100` definido en §4.4.6. Para una secuencia formateada con respuesta de longitud $|R|$ tokens, la pérdida del ejemplo es:
+
+$$\mathcal{L} = -\frac{1}{|R|} \sum_{t \in R} \log p_\theta(y_t \mid y_{<t},\, x_{\text{prompt}})$$
+
+donde $\theta$ refiere únicamente a los parámetros entrenables (los adaptadores LoRA; la base permanece congelada). El gradiente se calcula sólo sobre los tokens de la cadena de razonamiento más la letra final, no sobre la pregunta ni las opciones; promediar el resto diluiría la señal sin aportar aprendizaje útil.
+
+## 5.2 Parámetros entrenables
+
+Sólo las matrices $A$ y $B$ de los siete módulos LoRA definidos son entrenables; el resto del modelo —pesos del Transformer, embeddings y LM head— permanece congelado en NF4 + doble cuantización durante toda la corrida (todo esto descrito en §3.3). La tabla siguiente reporta el recuento aproximado de parámetros:
+
+| Cantidad | Valor |
+|---|---|
+| Parámetros totales del modelo base | _TBD_ |
+| Parámetros entrenables (adaptadores LoRA) | _TBD_ |
+| Fracción entrenable | _TBD_ |
+
+Esta razón —del orden de fracciones de punto porcentual— es lo que hace que el entrenamiento quepa en hardware de consumidor: los estados del optimizador y los gradientes se computan sólo sobre los adaptadores, no sobre los miles de millones de parámetros de la base.
+
+## 5.3 Optimizador y schedule de learning rate
+
+| Hiperparámetro | Valor | Justificación |
+|---|---|---|
+| Optimizador | `paged_adamw_32bit` | Variante de AdamW que es idéntica a la versión estándar (mantiene los estados del optimizador en precisión completa, fp32), pero incorpora una función dinámica de paginación hacia la RAM del CPU. Es la configuración exacta propuesta en el artículo original de QLoRA (Dettmers et al., 2023). La paginación es operacional: transfiere bloques de memoria al sistema host solo cuando detecta alta presión en la VRAM. De esta forma, logra absorber los picos abruptos de consumo de memoria (frecuentes al procesar secuencias largas o utilizar gradient checkpointing) sin modificar los cálculos matemáticos, garantizando una trayectoria de optimización indistinguible de la de un AdamW convencional |
+| Learning rate inicial | `2e-4` | Valor de referencia del paper original de QLoRA (Dettmers et al. 2023). Suficientemente alto para entrenar adaptadores recién inicializados en pocas pasadas; suficientemente bajo para no desestabilizar el bloque cuantizado |
+| LR scheduler | `cosine` | Decae el LR suavemente desde el valor inicial hasta cerca de cero al final del entrenamiento, reduciendo oscilación en la fase final cuando la pérdida ya está cerca de su mínimo |
+| Warmup ratio | `0.03` | El 3% de los pasos totales se dedica a un calentamiento lineal desde 0 hasta el LR inicial. Estabiliza las primeras actualizaciones sobre adaptadores cuya inicialización aleatoria es incompatible con un LR pleno desde el paso 0 |
+| Weight decay | `0.0` | LoRA introduce regularización implícita por construcción (rango bajo + dropout), por esto añadir weight decay en este régimen podría perjudicar la convergencia en lugar de ayudar |
+| Max grad norm | `1.0` | Clipping estándar de la norma del gradiente para LLMs. Previene actualizaciones desproporcionadas ante batches con ejemplos atípicamente largos o difíciles |
+| Precisión de cómputo | `bf16` | Coincide con el compute dtype declarado en §3.3 para los adaptadores. La base se mantiene congelada bajo NF4 + doble cuantización con descompresión sobre la marcha; los gradientes y los estados de los adaptadores viven en bf16 |
+
+## 5.4 Composición del batch y duración
+
+| Hiperparámetro | Valor |
+|---|---|
+| `per_device_train_batch_size` | 4 |
+| `gradient_accumulation_steps` | 4 |
+| Batch efectivo | 16 |
+| `max_length` | 1024 (§4.4.4) |
+| Padding | dinámico por batch (§4.4.5) |
+| Épocas | 1 |
+| Pasos de optimización aproximados | ≈ 3,125 (50,000 ejemplos del conjunto de entrenamiento / batch efectivo 16, una época) |
+
+El batch efectivo de 16 balancea dos restricciones: por debajo, la varianza del gradiente aumenta y el cosine schedule pierde estabilidad práctica; por encima, el costo en VRAM de activaciones intermedias y attention durante el forward excede la capacidad de la GPU sin beneficios proporcionales en estabilidad. La descomposición elegida (`per_device=4` × `accum=4`) prioriza la eficiencia de cómputo dentro de ese techo.
+
+## 5.5 Monitoreo durante el entrenamiento y selección del checkpoint
+
+El conjunto de validación durante el entrenamiento es `validation` definido en §4.5. Sobre este conjunto se evalúa la pérdida a una cadencia fija.
+
+### Cadencia de evaluación
+
+| Configuración | Valor |
+|---|---|
+| `eval_strategy` | `steps` |
+| `eval_steps` | 200 (≈ 16 evaluaciones a lo largo de los 3,125 pasos) |
+| Métrica monitoreada | pérdida de validación, definida como en §5.1 sobre el conjunto `validation` de §4.5 |
+
+### Selección del checkpoint final
+
+| Configuración | Valor |
+|---|---|
+| Criterio de selección | mínima pérdida de validación observada a lo largo de la corrida |
+| Adapter persistido al final | sólo los pesos LoRA correspondientes al checkpoint seleccionado (`adapter_config.json` + `adapter_model.safetensors`); la base congelada no se persiste, ya que se reconstruye desde su identificador en el Hub |
+| Ruta de salida | `artifacts/gemma-3-4b-it-qlora-finetune/adapter/` |
+
+Durante la corrida se mantiene en disco un único checkpoint adicional, el más reciente, exclusivamente para permitir reanudación desde el último punto en caso de interrupción. Una vez finalizada la corrida y seleccionado el mejor checkpoint, los intermedios se eliminan.
+
+## 5.6 Búsqueda de hiperparámetros
+
+No se realiza una búsqueda sistemática (grid o bayesiana) sobre los hiperparámetros descritos en §5.3 y §5.4. La totalidad de las elecciones se adopta de los valores de referencia del paper original de QLoRA y de las prácticas estándar de la librería PEFT.
+
+Esta decisión es consistente con el alcance del proyecto declarado en §1 y §2: el objetivo es cuantificar la fracción de la brecha de adaptación de dominio recuperable mediante un fine-tune eficiente principal, no encontrar la configuración óptima de hiperparámetros para QLoRA en el dominio médico.
+
+## 5.7 Curvas y diagnóstico
+
+Las pérdidas de entrenamiento y validación se registran en cada paso y en cada evaluación, respectivamente. La figura siguiente reporta su evolución a lo largo de la corrida final.
+
+> ![Curvas de pérdida de entrenamiento y validación](../reports/figures/training/loss_curves.png)
+> *Figura 5.1 — Pérdida de entrenamiento (por paso) y de validación (cada `eval_steps = 200`) a lo largo de la corrida única del fine-tune QLoRA. Se completa tras ejecutar el entrenamiento.*
+
+
+# 6. Evaluación
+
+Esta sección define el protocolo experimental con el que se mide el desempeño de los tres modelos comparados, las métricas reportadas y su definición precisa, el procedimiento de extracción de la respuesta del texto generado y el análisis cualitativo asociado. El protocolo es idéntico para los tres modelos, lo que permite atribuir cualquier diferencia observada únicamente a la adaptación de dominio aplicada y no a artefactos del proceso de evaluación.
+
+## 6.1 Conjuntos de evaluación
+
+Se utilizan dos conjuntos construidos en §4.5, ambos posteriores al preprocesamiento de §4.2 (limpios, deduplicados, sin leakage cruzado):
+
+| Conjunto | Origen | Tamaño | Rol | Desglose por especialidad |
+|---|---|---|---|---|
+| `test_id` | MedMCQA `validation` (estratificado, disjunto del subconjunto de monitoreo) | _1,573_ | Evaluación in-distribution | Sí (21 especialidades) |
+| `test_ood` | MedQA `test` íntegro | _1,273_ | Evaluación out-of-distribution | No |
+
+`test_id` mide desempeño sobre la distribución de la que MedMCQA fue extraído (examen de admisión médica indio); `test_ood` mide transferencia a un estilo de examen distinto (USMLE estadounidense), atendiendo al objetivo específico 3 de §2.2. Ningún ejemplo de `test_id` aparece en el conjunto de entrenamiento (separación garantizada por la disyunción de pools en §4.5) ni de `test_ood` aparece en el corpus de entrenamiento (verificación cruzada de hashes en §4.2.3).
+
+## 6.2 Modelos comparados
+
+Los tres modelos se evalúan bajo protocolo idéntico:
+
+| Identificador | Rol | Origen | Inicialización |
+|---|---|---|---|
+| `gemma-3-4b-it` | Piso (sin adaptación de dominio) | HuggingFace Hub: `google/gemma-3-4b-it` | Pesos públicos en bf16 |
+| `gemma-3-4b-it-qlora-finetune` | Modelo del proyecto | Modelo base + adaptador QLoRA entrenado en §5 | Base congelada en NF4 + adaptador LoRA en bf16 |
+| `medgemma-4b-it` | Techo industrial | HuggingFace Hub: `google/medgemma-4b-it` | Pesos públicos en bf16 |
+
+La elección triangula tres puntos sobre el eje de adaptación al dominio: el desempeño del modelo base sin tratamiento alguno, el del modelo del proyecto vía ajuste eficiente sobre la fase de instrucciones, y el del modelo industrial construido sobre la misma base con preentrenamiento continuado de gran escala. Cualquier diferencia entre `gemma-3-4b-it-qlora-finetune` y `medgemma-4b-it` se atribuye exclusivamente a la fase de preentrenamiento continuado, dado que ambos parten del mismo modelo base y son evaluados bajo idéntico protocolo.
+
+## 6.3 Protocolo de inferencia
+
+### 6.3.1 Chat template y prompt
+
+La construcción del prompt sigue el formato definido en §4.4.1: instrucción inline en el turno de usuario, pregunta y opciones formateadas con letras A–D, y solicitud explícita de cadena de razonamiento seguida de la respuesta en el formato `Answer: <letter>`. Para inferencia, el prompt se cierra con `<start_of_turn>model` (vía `add_generation_prompt=True` del chat template del tokenizador) de modo que el modelo continúe en la posición esperada.
+
+### 6.3.2 Parámetros de generación
+
+| Parámetro | Valor | Justificación |
+|---|---|---|
+| `do_sample` | `False` (greedy) | Determinismo y reproducibilidad. Bajo evaluación médica, dos corridas deben producir el mismo resultado para que las diferencias entre modelos sean atribuibles al modelo y no a la varianza del muestreo. |
+| `max_new_tokens` | 512 | De acuerdo con §4.2.4, el percentil 99 cubre hasta 768 tokens y considera `user prompt` + `exp`, por lo que solo para `exp` la cantidad de 512 tokens podría cubrir hasta el percentil 99 con un truncamiento residual esperado situado por debajo del 1%. |
+| `temperature` | 1.0 | Inerte bajo decodificación greedy; declarada explícita por compatibilidad con versiones de la librería de generación que requieren un valor presente. |
+| `repetition_penalty` | 1.0 | Sin penalización. Si el modelo cae en bucles degenerados, ese modo de falla queda visible en la generación y en la tasa de parseo en lugar de ser ocultado por una corrección artificial. |
+| `top_p`, `top_k` | no aplicados | Solo relevantes bajo muestreo; bajo greedy no operan. |
+
+Los tres modelos comparten exactamente esta configuración. La única variación admitida es el flag de cuantización 4-bit, dictado por la coherencia con la fase de entrenamiento del modelo del proyecto (§3.3) y no por el protocolo de evaluación.
+
+## 6.4 Extracción de la respuesta
+
+El output del modelo es texto libre (cadena de razonamiento seguida de letra final). La extracción de la letra predicha se realiza mediante una cascada de cuatro expresiones regulares aplicadas en orden:
+
+| # | Patrón | Cubre |
+|---|---|---|
+| 1 | `(?:final\s+)?[Aa]nswer(?:\s+is)?:\s*\(?([A-D])\)?` | "Answer: B", "Final Answer: B", "Answer is: B" |
+| 2 | `correct\s+(?:option\|choice\|answer)\s+is\s*\(?([A-D])\)?` | "the correct option is B" |
+| 3 | `\\boxed\{([A-D])\}` | Notación LaTeX (poco común en Gemma; defensiva) |
+| 4 | `\b([A-D])\s*$` | Letra aislada al final del texto, último recurso |
+
+Para cada patrón se toma el **último match** del texto. La regla del último match es relevante cuando la cadena de razonamiento discute varias opciones antes de comprometerse con una; la última mención corresponde a la respuesta final en lugar de un paso intermedio. Si ningún patrón matchea, la respuesta se marca como `parse_success = false` y la pregunta cuenta como respondida incorrectamente para efectos de accuracy. La elección de no excluir parse failures del denominador es deliberada: hacerlo inflaría la métrica principal y enmascararía un modo de falla observable del modelo.
+
+## 6.5 Métricas
+
+### 6.5.1 Métricas primarias
+
+**Accuracy global**. Definida como:
+
+$$\text{accuracy} = \frac{\#\{i : \text{predicted\_letter}_i = \text{ground\_truth\_letter}_i \,\land\, \text{parse\_success}_i\}}{N}$$
+
+Se reporta una accuracy por (modelo, split). Las parse failures cuentan como respuestas incorrectas; el denominador es el número total de ejemplos del split, no el número de ejemplos parseados con éxito.
+
+**Accuracy por especialidad**. Misma definición restringida a los ejemplos de una especialidad dada. Se calcula únicamente sobre `test_id`, ya que `test_ood` carece de etiqueta de especialidad (§4.1). Los ejemplos sin `subject_name` se agrupan bajo el bucket explícito `Unknown` en lugar de descartarse.
+
+### 6.5.2 Métrica de salud
+
+**Parse success rate**. Definida como:
+
+$$\text{parse\_success\_rate} = \frac{\#\{i : \text{parse\_success}_i\}}{N}$$
+
+Se reporta por (modelo, split) únicamente a nivel global, no por especialidad. Su rol es interpretativo: un modelo con parse rate sustancialmente menor que el resto puede tener su accuracy infrareportada por incapacidad de emitir el formato esperado más que por desconocimiento médico. Las dos métricas se leen conjuntamente; ninguna sustituye a la otra.
+
+## 6.6 Resultados
+
+> _Los resultados numéricos se completan tras ejecutar el pipeline de evaluación sobre los tres modelos. Las celdas marcadas `_TBD_` corresponden a valores pendientes._
+
+### 6.6.1 Accuracy global
+
+| Modelo | `test_id` accuracy | `test_id` parse rate | `test_ood` accuracy | `test_ood` parse rate |
+|---|---|---|---|---|
+| `gemma-3-4b-it` | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| `gemma-3-4b-it-qlora-finetune` | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| `medgemma-4b-it` | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+
+### 6.6.2 Brecha cerrada por el fine-tune
+
+La fracción de la brecha entre el modelo base y el techo industrial recuperada por el fine-tune se define, para cada split y cuando el denominador es positivo, como:
+
+$$\text{gap\_recovered} = \frac{\text{acc}_{\text{finetune}} - \text{acc}_{\text{base}}}{\text{acc}_{\text{medgemma}} - \text{acc}_{\text{base}}}$$
+
+Se reporta por separado para `test_id` y `test_ood`, dado que la transferencia entre estilos de examen constituye un objetivo específico del proyecto (§2.2, obj. 3).
+
+| Split | Brecha recuperada |
+|---|---|
+| `test_id` | _TBD_ |
+| `test_ood` | _TBD_ |
+
+### 6.6.3 Accuracy por especialidad (`test_id`)
+
+Una fila por especialidad de MedMCQA y, si aplica, un bucket adicional `Unknown` para los ejemplos con `subject_name` ausente. La columna `n` reporta el tamaño efectivo del bucket dentro de `test_id` para contextualizar la varianza de la estimación.
+
+| Especialidad | n | `gemma-3-4b-it` | `gemma-3-4b-it-qlora-finetune` | `medgemma-4b-it` |
+|---|---|---|---|---|
+| _Especialidad 1_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| _Especialidad 2_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| _Especialidad 3_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| ... | ... | ... | ... | ... |
+| _Especialidad 21_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| `Unknown` (si aplica) | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+
+## 6.7 Análisis cualitativo
+
+El análisis cualitativo se construye sobre cinco ejemplos de un mismo split, seleccionados bajo un patrón fijo de correctitud cruzada anclado al modelo del proyecto:
+
+| # | `gemma-3-4b-it` | `gemma-3-4b-it-qlora-finetune` | `medgemma-4b-it` | Observación que ilustra |
+|---|---|---|---|---|
+| 1 | ✗ | ✓ | ✓ | El fine-tune cierra una brecha que el base no logra |
+| 2 | ✗ | ✓ | ✓ | El fine-tune cierra una brecha que el base no logra |
+| 3 | ✗ | ✗ | ✓ | Brecha residual del fine-tune contra el techo industrial |
+| 4 | ✗ | ✗ | ✓ | Brecha residual del fine-tune contra el techo industrial |
+| 5 | ✓ | ✓ | ✗ | El modelo industrial también falla en algunos casos |
+
+El anclaje al fine-tune se justifica porque éste es el sujeto del experimento: las preguntas donde su comportamiento diverge del base o del industrial son las que portan contenido informativo sobre la pregunta central del proyecto. La selección procede por intersección sobre los IDs comunes a las tres predicciones; la asignación dentro de cada celda del patrón se aleatoriza con semilla fija para reproducibilidad. Las cinco IDs seleccionadas son las mismas para los tres modelos, permitiendo lectura lado a lado de la generación completa de cada modelo sobre la misma pregunta.
+
+Si para alguna fila del patrón no existe candidato (situación más probable en `test_ood` por su tamaño reducido), la fila se omite y queda registrada en el log; el análisis prosigue con las filas restantes en lugar de relajar las condiciones.
+
+El conjunto completo de los cinco ejemplos seleccionados, junto con la generación íntegra de cada modelo sobre cada pregunta, se persiste en `reports/qualitative/{model}/{split}.md`. A continuación se incluyen, a modo de ilustración inline, dos casos representativos —uno por cada uno de los dos hallazgos centrales que el patrón está diseñado para evidenciar—; el resto se consulta en los archivos referenciados.
+
+### Ejemplo ilustrativo 1 — fine-tune al nivel del techo industrial
+
+_Caso correspondiente a la fila 1 o 2 del patrón: el base falla, el fine-tune y MedGemma aciertan. Ilustra que la adaptación eficiente recupera capacidad de respuesta para preguntas sobre las que el preentrenamiento continuado industrial también acierta._
+
+- **Split**: _TBD_
+- **`id`**: `_TBD_`
+- **Especialidad**: _TBD_
+- **Respuesta correcta**: `_TBD_`
+
+**Pregunta**:
+
+> _TBD_
+
+**Opciones**:
+
+- A) _TBD_
+- B) _TBD_
+- C) _TBD_
+- D) _TBD_
+
+**Generaciones**:
+
+| Modelo | Letra predicha | ¿Correcto? | Razonamiento (extracto) |
+|---|---|---|---|
+| `gemma-3-4b-it` | `_TBD_` | ✗ | _TBD_ |
+| `gemma-3-4b-it-qlora-finetune` | `_TBD_` | ✓ | _TBD_ |
+| `medgemma-4b-it` | `_TBD_` | ✓ | _TBD_ |
+
+### Ejemplo ilustrativo 2 — brecha residual del fine-tune frente al techo industrial
+
+_Caso correspondiente a la fila 3 o 4 del patrón: el base y el fine-tune fallan, MedGemma acierta. Ilustra el límite del ajuste eficiente frente al preentrenamiento continuado de gran escala, donde el conocimiento factual o el patrón de razonamiento requerido excede lo que la adaptación sobre instrucciones logra inducir._
+
+- **Split**: _TBD_
+- **`id`**: `_TBD_`
+- **Especialidad**: _TBD_
+- **Respuesta correcta**: `_TBD_`
+
+**Pregunta**:
+
+> _TBD_
+
+**Opciones**:
+
+- A) _TBD_
+- B) _TBD_
+- C) _TBD_
+- D) _TBD_
+
+**Generaciones**:
+
+| Modelo | Letra predicha | ¿Correcto? | Razonamiento (extracto) |
+|---|---|---|---|
+| `gemma-3-4b-it` | `_TBD_` | ✗ | _TBD_ |
+| `gemma-3-4b-it-qlora-finetune` | `_TBD_` | ✗ | _TBD_ |
+| `medgemma-4b-it` | `_TBD_` | ✓ | _TBD_ |
+
+## 6.8 Limitaciones del protocolo
+
+El protocolo descrito presenta las siguientes limitaciones:
+
+1. **Decodificación greedy únicamente**. Greedy produce una sola trayectoria de generación por pregunta y no captura la distribución sobre respuestas posibles del modelo. Estrategias como autoconsistencia (votación sobre múltiples cadenas muestreadas) podrían elevar accuracy a costa de la reproducibilidad y del costo computacional; la elección privilegia lo primero.
+
+2. **Parseo basado en patrones fijos**. La extracción de la letra depende de la cobertura de cuatro expresiones regulares (§6.4). Un modelo que emita la respuesta correcta en un formato no anticipado (e.g., "the answer is B." sin dos puntos) será marcado como parse failure y contará como incorrecto. La métrica `parse_success_rate` permite detectar el efecto pero no lo corrige.
+
+3. **Truncamiento residual de la generación**. Con `max_new_tokens = 512`, una fracción menor de generaciones alcanza el límite antes de emitir la letra final, manifestándose como parse failure indistinguible del modo de falla genuino sin inspección de la cola de longitudes.
+
+4. **Tamaños de muestra y ausencia de intervalos de confianza**. Con _1,573_ ejemplos en `test_id` y _1,273_ en `test_ood`, las estimaciones de accuracy tienen incertidumbre estadística no negligible (error estándar del orden de ±0.01 a niveles típicos de accuracy). El reporte se restringe a accuracy puntual; no se computan intervalos de confianza ni pruebas de significancia entre modelos.
+
+5. **Cobertura limitada de bancos de exámenes**. La evaluación in-distribution se restringe a MedMCQA y la out-of-distribution a MedQA. Otros bancos relevantes (HEAD-QA, PubMedQA, CMExam) no se incluyen; la generalización a estilos de examen distintos de los dos cubiertos no se prueba.
+
+6. **Dimensión translingüe no evaluada**. Aunque la base Gemma 3 admite múltiples idiomas y §3.1 anticipa potencial translingüe, la evaluación se realiza íntegramente en inglés. La transferencia del conocimiento médico adquirido a preguntas en español u otros idiomas queda fuera del alcance del presente reporte.
+
+7. **Análisis cualitativo no muestral**. La selección de cinco ejemplos del §6.7 es ilustrativa, no representativa. No permite cuantificar prevalencias de tipos de error sobre el corpus de evaluación; su rol es complementar las métricas con casos concretos que motiven el análisis posterior.
