@@ -1,0 +1,96 @@
+# Training configuration for the QLoRA fine-tune (gemma-3-4b-it-qlora-finetune).
+#
+# Run:
+#     python -m src.pipelines.training_pipeline
+#     python -m src.pipelines.training_pipeline --config configs/training.yaml
+#     python -m src.pipelines.training_pipeline --resume-from-checkpoint latest
+
+seed: 42
+
+# ----------------------------------------------------------------------------
+# Base model loaded under NF4 + double quantization. The cache_dir
+# is shared with the finetune-eval config so the base is downloaded once and
+# reused at inference time.
+# ----------------------------------------------------------------------------
+base_model:
+  model_id: google/gemma-3-4b-it
+  tokenizer_id: google/gemma-3-4b-it
+  cache_dir: artifacts/gemma-3-4b-it-qlora-finetune
+  torch_dtype: bfloat16
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: bfloat16
+
+# ----------------------------------------------------------------------------
+# LoRA adapter
+# ----------------------------------------------------------------------------
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+# ----------------------------------------------------------------------------
+# Datasets — train + eval splits from data/processed/splits.
+# ----------------------------------------------------------------------------
+data:
+  splits_dir: data/processed/splits
+  train_split: train          # MedMCQA stratified train sample
+  eval_split:  validation     # MedMCQA stratified validation sample
+  max_length: 1024            
+
+# ----------------------------------------------------------------------------
+# Optimization, schedule, batch composition and checkpointing.
+# Output layout under artifacts/gemma-3-4b-it-qlora-finetune/:
+#   checkpoints/    intermediate checkpoints (most recent + best, then pruned)
+#   adapter/        final selected adapter (LoRA weights only)
+# ----------------------------------------------------------------------------
+training:
+  output_dir: artifacts/gemma-3-4b-it-qlora-finetune
+
+  # Duration and batch
+  num_train_epochs: 1
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8         # effective batch = 16
+
+  # Optimizer and schedule
+  optim: paged_adamw_32bit
+  learning_rate: 2.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+
+  # Mixed precision — bf16 for adapters/grads; base stays NF4 with on-the-fly
+  # decompression handled by bitsandbytes.
+  bf16: true
+  gradient_checkpointing: true
+
+  # Eval cadence
+  eval_strategy: steps
+  eval_steps: 200
+  logging_strategy: steps
+  logging_steps: 25
+
+  # Checkpoint retention
+  # save_total_limit=1 keeps the single most recent checkpoint for resume;
+  # load_best_model_at_end=true preserves the best by eval_loss in addition.
+  save_strategy: steps
+  save_steps: 200
+  save_total_limit: 1
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+
+  # External logging (wandb / tensorboard) disabled by default.
+  report_to: none

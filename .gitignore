@@ -228,11 +228,18 @@ data/interim/*
 # Hugging Face caches
 .cache/huggingface/
 
-# Evaluation pipeline outputs under artifacts/{model}/...
-# Versioned (allowlist): metrics.json.
-# Everything else (HuggingFace weight/tokenizer cache, predictions JSONL,
-# trained adapter, training checkpoints, future subdirs) is excluded;
-# all of it is reproducible from configs + the eval/training pipelines.
+# Outputs of the evaluation and training pipelines under artifacts/{model}/...
+# Versioned (allowlist):
+#   - artifacts/*/metrics.json
+#       Eval credential of every model (output of src/pipelines/evaluation_pipeline.py).
+#   - artifacts/gemma-3-4b-it-qlora-finetune/adapter/
+#       Final LoRA weights (output of
+#       src/pipelines/training_pipeline.py).
+# Everything else is excluded (HuggingFace weight/tokenizer cache,
+# predictions JSONL, training checkpoints, future subdirs); all reproducible
+# from configs + the corresponding pipeline.
 artifacts/*/*
+*.safetensors
 !artifacts/*/metrics.json
+!artifacts/gemma-3-4b-it-qlora-finetune/adapter
 
