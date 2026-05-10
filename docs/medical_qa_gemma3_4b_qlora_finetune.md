@@ -318,11 +318,11 @@ Se computa el histograma de longitudes en tokens (post-tokenización con el toke
 
 | Percentil | MedMCQA (tokens) | MedQA (tokens) |
 |---|---|---|
-| p50 (mediana) | _201_ | _256_ |
-| p90 | _380_ | _376_ |
-| p95 | _477_ | _425_ |
-| p99 | _768_ | _503_ |
-| máximo | _4,901_ | _979_ |
+| p50 (mediana) | 201 | 256 |
+| p90 | 380 | 376 |
+| p95 | 477 | 425 |
+| p99 | 768 | 503 |
+| máximo | 4,901 | 979 |
 
 #### Distribución de letras correctas
 
@@ -344,10 +344,10 @@ Se verifica que el tokenizador de Gemma 3 no produce tokens desconocidos (`<unk>
 
 | Métrica | MedMCQA | MedQA |
 |---|---|---|
-| Tokens totales en el corpus | _29,579,163_ | _342,494_ |
-| Tokens `<unk>` detectados | _0_ | _0_ |
-| Porcentaje de OOV | _0%_ | _0%_ |
-| Ejemplos descartados por corrupción | _0_ | _0_ |
+| Tokens totales en el corpus | 29,579,163 | 342,494 |
+| Tokens `<unk>` detectados | 0 | 0 |
+| Porcentaje de OOV | 0% | 0% |
+| Ejemplos descartados por corrupción | 0 | 0 |
 
 ### 4.2.5 Resumen del corpus consolidado
 
@@ -355,13 +355,13 @@ Tabla consolidada que reporta la reducción del corpus a través de las operacio
 
 | Etapa | MedMCQA | MedQA `test` |
 |---|---|---|
-| Corpus crudo | _187,005_ | _1,273_ |
-| Tras filtrado de calidad | _145,206_ | _1,273_ |
-| Tras deduplicación | _124,388_ | _1,273_ |
-| Tras eliminación de leakage cruzado | _124,388_ | _1,273_ |
-| Tras eliminación de OOV (si aplica) | _124,388_ | _1,273_ |
-| **Corpus final** | **_124,388_** | **_1,273_** |
-| Pérdida total respecto al crudo (%) | _33.48%_ | _0.0%_ |
+| Corpus crudo | 187,005 | 1,273 |
+| Tras filtrado de calidad | 145,206 | 1,273 |
+| Tras deduplicación | 124,388 | 1,273 |
+| Tras eliminación de leakage cruzado | 124,388 | 1,273 |
+| Tras eliminación de OOV (si aplica) | 124,388 | 1,273 |
+| **Corpus final** | **124,388** | **1,273** |
+| Pérdida total respecto al crudo (%) | 33.48% | 0.0% |
 
  Para MedMCQA el corpus combina las particiones `train` y `validation` provistas originalmente por los autores del dataset; las etiquetas de partición se preservan internamente en cada ejemplo y se utilizan en §4.5 para construir los subconjuntos del experimento.
 
@@ -373,12 +373,12 @@ Las estadísticas siguientes describen el corpus tras el preprocesamiento de §4
 
 | Estadística | MedMCQA (post-preprocesamiento) | MedQA-4opt (test post-preprocesamiento) |
 |---|---|---|
-| Preguntas totales | _124,388_ | _1,273_ |
-| Longitud media de la pregunta (tokens) | _19.11_ | _174.03_ |
-| Longitud media de cada opción (tokens) | _4.29_ | _5.66_ |
-| Longitud media de la explicación (tokens) | _120.01_ | N/A |
+| Preguntas totales | 124,388 | 1,273 |
+| Longitud media de la pregunta (tokens) | 19.11 | 174.03 |
+| Longitud media de cada opción (tokens) | 4.29 | 5.66 |
+| Longitud media de la explicación (tokens) | 120.01 | N/A |
 | Cobertura de categorías | 21 especialidades médicas | No disponible |
-| Balance de letras correctas (A/B/C/D) | _28.79%, 26.05%, 23.33%, 21.84%_ | _27.73%, 24.27%, 27.18%, 20.81%_ |
+| Balance de letras correctas (A/B/C/D) | 28.79%, 26.05%, 23.33%, 21.84% | 27.73%, 24.27%, 27.18%, 20.81% |
 
 **Notas:**
 
@@ -433,26 +433,25 @@ Donde `{letter_from_cop}` se obtiene mapeando el índice numérico de la respues
 La distribución de longitudes reportada en §4.2.4 informa el techo de truncamiento. Con un percentil 95 medido en _477_ tokens y un percentil 99 en _768_ tokens sobre el corpus de entrenamiento (MedMCQA), se establece:
 
 - **`max_length = 1024` tokens**: techo aplicado durante la tokenización.
-- **Estrategia**: `truncation="longest_first"`, aplicado preferentemente a la explicación (no a la pregunta ni a las opciones), porque la pregunta y las opciones son contenido crítico que el modelo debe ver íntegro para aprender la asociación correcta.
-- **Ejemplos que excederían 1024 tokens**: se truncan según la política anterior (no se descartan), preservando pregunta + opciones + respuesta final.
+- **Estrategia**: truncamiento desde el extremo derecho de la secuencia tokenizada al llegar a `max_length`. En el orden de renderizado, la primera víctima es la cola del turno del modelo (cierre `<end_of_turn>`, `Answer: <letter>`, y después la explicación), preservándose siempre el turno completo del usuario (instrucción + pregunta + opciones) en los ~0.35% de ejemplos afectados.
 
-**Justificación de 1024 como techo:**
-- Cubre el ~99% de los ejemplos sin truncamiento después de realizar el análisis exploratorio.
-- Es potencia de 2, lo que aprovecha alineamiento con kernels GPU.
-- Subir a 2048 doblaría el costo computacional de la atención sin beneficio para la inmensa mayoría de los ejemplos.
+- **Justificación de 1024 como techo:**
+Cubre el ~99% de los ejemplos sin truncamiento después de realizar el análisis exploratorio.
+Es potencia de 2, lo que aprovecha alineamiento con kernels GPU.
+Subir a 2048 doblaría el costo computacional de la atención sin beneficio para la inmensa mayoría de los ejemplos.
 
 **Tasa de truncamiento aplicada:**
 
 | Métrica | Valor |
 |---|---|
-| Ejemplos truncados | _435_ |
-| Porcentaje del corpus | _0.35%_ |
+| Ejemplos truncados | 435 |
+| Porcentaje del corpus | 0.35% |
 
 ### 4.4.5 Padding
 
 Las secuencias formateadas tienen longitud variable. Durante el entrenamiento se agrupan en batches, lo que obliga a igualar longitudes dentro de cada batch mediante tokens de relleno (*padding*). La política aplicada es padding dinámico al máximo de cada batch en lugar de padding estático al techo global `max_length = 1024`. La razón es eficiencia: cuando un batch contiene secuencias substancialmente más cortas que el techo, el padding estático desperdicia cómputo en posiciones que no aportan señal de aprendizaje, mientras que el padding dinámico solo rellena hasta lo necesario para alinear las secuencias del batch en cuestión.
 
-Esta operación es propia del *runtime* de entrenamiento, no del preprocesamiento: el corpus que sale de la presente sección contiene secuencias sin padding. La implementación concreta del *data collator* responsable del padding, junto con la configuración fina se detalla en §5.
+Esta operación es propia del *runtime* de entrenamiento, no del preprocesamiento: el corpus que sale de la presente sección contiene secuencias sin padding.
 
 ### 4.4.6 Etiquetado de labels (`-100`)
 
@@ -465,7 +464,6 @@ Esta mecánica es propia del _loop_ de entrenamiento. El corpus que sale del pre
 Se revisa una muestra aleatoria de 10 ejemplos del corpus formateado (post-tokenización, decodificados de vuelta a texto) para verificar:
 
 - Coherencia entre pregunta, opciones y respuesta correcta.
-- Calidad de la explicación como cadena de razonamiento.
 - Formato consistente del prompt y la respuesta.
 - Ausencia de artefactos de extracción (HTML residual, caracteres mal codificados).
 - Aplicación correcta del chat template y tokens especiales.
@@ -482,9 +480,9 @@ A partir del corpus limpio producido en §4.2, se construyen los subconjuntos de
 
 | Pool | Origen | Tamaño disponible |
 |---|---|---|
-| MedMCQA `train` limpio | partición original `train` de MedMCQA tras §4.2 | _122,315_ |
-| MedMCQA `validation` limpio | partición original `validation` de MedMCQA tras §4.2 | _2,073_ |
-| MedQA `test` limpio | partición `test` de MedQA tras §4.2 | _1,273_ |
+| MedMCQA `train` limpio | partición original `train` de MedMCQA tras §4.2 | 122,315 |
+| MedMCQA `validation` limpio | partición original `validation` de MedMCQA tras §4.2 | 2,073 |
+| MedQA `test` limpio | partición `test` de MedQA tras §4.2 | 1,273 |
 
 ### Regla de muestreo
 
@@ -498,28 +496,28 @@ Para cada subconjunto se define un objetivo de tamaño. La regla aplicada es:
 
 #### Conjunto de entrenamiento
 
-Del pool MedMCQA `train` limpio (_122,315_ ejemplos disponibles) se extrae un subconjunto estratificado por especialidad con objetivo 50,000 ejemplos.
+Del pool MedMCQA `train` limpio (122,315 ejemplos disponibles) se extrae un subconjunto estratificado por especialidad con objetivo 50,000 ejemplos.
 
 #### Conjunto de validación durante el entrenamiento
 
-Del pool MedMCQA `validation` limpio (_2,073_ ejemplos disponibles) se extrae un primer subconjunto estratificado con objetivo 500 ejemplos, destinado al monitoreo de val accuracy intermedia durante el entrenamiento.
+Del pool MedMCQA `validation` limpio (2,073 ejemplos disponibles) se extrae un primer subconjunto estratificado con objetivo 500 ejemplos, destinado al monitoreo de val accuracy intermedia durante el entrenamiento.
 
 #### Conjunto de evaluación in-distribution
 
-Del mismo pool MedMCQA `validation` limpio, excluyendo los 500 del subconjunto anterior para evitar leakage entre monitoreo y evaluación final, se extrae el segundo subconjunto estratificado de 1,573 ejemplos (_2,073_ - _500_ de validación). Esta es la métrica final in-distribution comparable entre los tres modelos del experimento.
+Del mismo pool MedMCQA `validation` limpio, excluyendo los 500 del subconjunto anterior para evitar leakage entre monitoreo y evaluación final, se extrae el segundo subconjunto estratificado de 1,573 ejemplos (2,073 - 500 de validación). Esta es la métrica final in-distribution comparable entre los tres modelos del experimento.
 
 #### Conjunto de evaluación out-of-distribution
 
-Del pool MedQA `test` limpio (_1,273_ ejemplos disponibles) se utilizan todos los ejemplos sin muestreo adicional. 
+Del pool MedQA `test` limpio (1,273 ejemplos disponibles) se utilizan todos los ejemplos sin muestreo adicional. 
 
 ### Resumen final
 
 | Conjunto  | Tamaño efectivo | Origen | Uso |
 |---|---|---|---|
-| Entrenamiento  | _50,000_ | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
-| Validación durante entrenamiento | _500_ | MedMCQA `validation` limpio, muestreo estratificado | Eval intermedia (cada N pasos) |
-| Evaluación in-distribution | _1,573_ | MedMCQA `validation` limpio, muestreo estratificado disjunto | Métrica final in-distribution |
-| Evaluación out-of-distribution | todos los disponibles | _1,273_ | MedQA `test` limpio íntegro | Métrica final out-of-distribution |
+| Entrenamiento  | 50,000 | MedMCQA `train` limpio, muestreo estratificado | Fine-tuning QLoRA |
+| Validación durante entrenamiento | 500 | MedMCQA `validation` limpio, muestreo estratificado | Eval intermedia (cada N pasos) |
+| Evaluación in-distribution | 1,573 | MedMCQA `validation` limpio, muestreo estratificado disjunto | Métrica final in-distribution |
+| Evaluación out-of-distribution | todos los disponibles | 1,273 | MedQA `test` limpio íntegro | Métrica final out-of-distribution |
 
 
 # 5. Entrenamiento
@@ -540,11 +538,11 @@ Sólo las matrices $A$ y $B$ de los siete módulos LoRA definidos son entrenable
 
 | Cantidad | Valor |
 |---|---|
-| Parámetros totales del modelo base | _TBD_ |
-| Parámetros entrenables (adaptadores LoRA) | _TBD_ |
-| Fracción entrenable | _TBD_ |
+| Parámetros totales del modelo base | 2,523,011,440 |
+| Parámetros entrenables (adaptadores LoRA) | 32,788,480 |
+| Fracción entrenable | 1.2996% |
 
-Esta razón —del orden de fracciones de punto porcentual— es lo que hace que el entrenamiento quepa en hardware de consumidor: los estados del optimizador y los gradientes se computan sólo sobre los adaptadores, no sobre los miles de millones de parámetros de la base.
+Esta razón es lo que hace que el entrenamiento quepa en hardware de consumidor: los estados del optimizador y los gradientes se computan sólo sobre los adaptadores, no sobre los miles de millones de parámetros de la base.
 
 ## 5.3 Optimizador y schedule de learning rate
 
@@ -562,15 +560,15 @@ Esta razón —del orden de fracciones de punto porcentual— es lo que hace que
 
 | Hiperparámetro | Valor |
 |---|---|
-| `per_device_train_batch_size` | 4 |
-| `gradient_accumulation_steps` | 4 |
+| `per_device_train_batch_size` | 2 |
+| `gradient_accumulation_steps` | 8 |
 | Batch efectivo | 16 |
 | `max_length` | 1024 (§4.4.4) |
 | Padding | dinámico por batch (§4.4.5) |
 | Épocas | 1 |
-| Pasos de optimización aproximados | ≈ 3,125 (50,000 ejemplos del conjunto de entrenamiento / batch efectivo 16, una época) |
+| Pasos de optimización aproximados | 3,125 (50,000 ejemplos del conjunto de entrenamiento / batch efectivo 16, una época) |
 
-El batch efectivo de 16 balancea dos restricciones: por debajo, la varianza del gradiente aumenta y el cosine schedule pierde estabilidad práctica; por encima, el costo en VRAM de activaciones intermedias y attention durante el forward excede la capacidad de la GPU sin beneficios proporcionales en estabilidad. La descomposición elegida (`per_device=4` × `accum=4`) prioriza la eficiencia de cómputo dentro de ese techo.
+El batch efectivo de 16 balancea dos restricciones: por debajo, la varianza del gradiente aumenta y el cosine schedule pierde estabilidad práctica; por encima, el costo en VRAM de activaciones intermedias y attention durante el forward excede la capacidad de la GPU sin beneficios proporcionales en estabilidad. La descomposición elegida (`per_device=2` × `accum=8`) prioriza la eficiencia de cómputo dentro de ese techo.
 
 ## 5.5 Monitoreo durante el entrenamiento y selección del checkpoint
 
@@ -581,7 +579,7 @@ El conjunto de validación durante el entrenamiento es `validation` definido en 
 | Configuración | Valor |
 |---|---|
 | `eval_strategy` | `steps` |
-| `eval_steps` | 200 (≈ 16 evaluaciones a lo largo de los 3,125 pasos) |
+| `eval_steps` | 200 (15 evaluaciones a lo largo de los 3,125 pasos) |
 | Métrica monitoreada | pérdida de validación, definida como en §5.1 sobre el conjunto `validation` de §4.5 |
 
 ### Selección del checkpoint final
@@ -605,7 +603,7 @@ Esta decisión es consistente con el alcance del proyecto declarado en §1 y §2
 Las pérdidas de entrenamiento y validación se registran en cada paso y en cada evaluación, respectivamente. La figura siguiente reporta su evolución a lo largo de la corrida final.
 
 > ![Curvas de pérdida de entrenamiento y validación](../reports/figures/training/loss_curves.png)
-> *Figura 5.1 — Pérdida de entrenamiento (por paso) y de validación (cada `eval_steps = 200`) a lo largo de la corrida única del fine-tune QLoRA. Se completa tras ejecutar el entrenamiento.*
+> *Figura 5.1 — Pérdida de entrenamiento (por paso) y de validación (cada `eval_steps = 200`) a lo largo de la corrida única del fine-tune QLoRA.*
 
 
 # 6. Evaluación
@@ -618,8 +616,8 @@ Se utilizan dos conjuntos construidos en §4.5, ambos posteriores al preprocesam
 
 | Conjunto | Origen | Tamaño | Rol | Desglose por especialidad |
 |---|---|---|---|---|
-| `test_id` | MedMCQA `validation` (estratificado, disjunto del subconjunto de monitoreo) | _1,573_ | Evaluación in-distribution | Sí (21 especialidades) |
-| `test_ood` | MedQA `test` íntegro | _1,273_ | Evaluación out-of-distribution | No |
+| `test_id` | MedMCQA `validation` (estratificado, disjunto del subconjunto de monitoreo) | 1,573 | Evaluación in-distribution | Sí (21 especialidades) |
+| `test_ood` | MedQA `test` íntegro | 1,273 | Evaluación out-of-distribution | No |
 
 `test_id` mide desempeño sobre la distribución de la que MedMCQA fue extraído (examen de admisión médica indio); `test_ood` mide transferencia a un estilo de examen distinto (USMLE estadounidense), atendiendo al objetivo específico 3 de §2.2. Ningún ejemplo de `test_id` aparece en el conjunto de entrenamiento (separación garantizada por la disyunción de pools en §4.5) ni de `test_ood` aparece en el corpus de entrenamiento (verificación cruzada de hashes en §4.2.3).
 
@@ -688,15 +686,13 @@ Se reporta por (modelo, split) únicamente a nivel global, no por especialidad. 
 
 ## 6.6 Resultados
 
-> _Los resultados numéricos se completan tras ejecutar el pipeline de evaluación sobre los tres modelos. Las celdas marcadas `_TBD_` corresponden a valores pendientes._
-
 ### 6.6.1 Accuracy global
 
 | Modelo | `test_id` accuracy | `test_id` parse rate | `test_ood` accuracy | `test_ood` parse rate |
 |---|---|---|---|---|
-| `gemma-3-4b-it` | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| `gemma-3-4b-it-qlora-finetune` | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| `medgemma-4b-it` | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| `gemma-3-4b-it` | TBD | TBD | TBD | TBD |
+| `gemma-3-4b-it-qlora-finetune` | TBD | TBD | TBD | TBD |
+| `medgemma-4b-it` | TBD | TBD | TBD | TBD |
 
 ### 6.6.2 Brecha cerrada por el fine-tune
 
@@ -708,8 +704,8 @@ Se reporta por separado para `test_id` y `test_ood`, dado que la transferencia e
 
 | Split | Brecha recuperada |
 |---|---|
-| `test_id` | _TBD_ |
-| `test_ood` | _TBD_ |
+| `test_id` | TBD |
+| `test_ood` | TBD |
 
 ### 6.6.3 Accuracy por especialidad (`test_id`)
 
@@ -717,12 +713,28 @@ Una fila por especialidad de MedMCQA y, si aplica, un bucket adicional `Unknown`
 
 | Especialidad | n | `gemma-3-4b-it` | `gemma-3-4b-it-qlora-finetune` | `medgemma-4b-it` |
 |---|---|---|---|---|
-| _Especialidad 1_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| _Especialidad 2_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| _Especialidad 3_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| ... | ... | ... | ... | ... |
-| _Especialidad 21_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| `Unknown` (si aplica) | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| Especialidad 1 | TBD | TBD | TBD | TBD |
+| Especialidad 2 | TBD | TBD | TBD | TBD |
+| Especialidad 3 | TBD | TBD | TBD | TBD |
+| Especialidad 4 | TBD | TBD | TBD | TBD |
+| Especialidad 5 | TBD | TBD | TBD | TBD |
+| Especialidad 6 | TBD | TBD | TBD | TBD |
+| Especialidad 7 | TBD | TBD | TBD | TBD |
+| Especialidad 8 | TBD | TBD | TBD | TBD |
+| Especialidad 9 | TBD | TBD | TBD | TBD |
+| Especialidad 10 | TBD | TBD | TBD | TBD |
+| Especialidad 11 | TBD | TBD | TBD | TBD |
+| Especialidad 12 | TBD | TBD | TBD | TBD |
+| Especialidad 13 | TBD | TBD | TBD | TBD |
+| Especialidad 14 | TBD | TBD | TBD | TBD |
+| Especialidad 15 | TBD | TBD | TBD | TBD |
+| Especialidad 16 | TBD | TBD | TBD | TBD |
+| Especialidad 17 | TBD | TBD | TBD | TBD |
+| Especialidad 18 | TBD | TBD | TBD | TBD |
+| Especialidad 19 | TBD | TBD | TBD | TBD |
+| Especialidad 20 | TBD | TBD | TBD | TBD |
+| Especialidad 21 | TBD | TBD | TBD | TBD |
+| `Unknown` (si aplica) | TBD | TBD | TBD | TBD |
 
 ## 6.7 Análisis cualitativo
 
@@ -744,59 +756,59 @@ El conjunto completo de los cinco ejemplos seleccionados, junto con la generaci�
 
 ### Ejemplo ilustrativo 1 — fine-tune al nivel del techo industrial
 
-_Caso correspondiente a la fila 1 o 2 del patrón: el base falla, el fine-tune y MedGemma aciertan. Ilustra que la adaptación eficiente recupera capacidad de respuesta para preguntas sobre las que el preentrenamiento continuado industrial también acierta._
+Caso correspondiente a la fila 1 o 2 del patrón: el base falla, el fine-tune y MedGemma aciertan. Ilustra que la adaptación eficiente recupera capacidad de respuesta para preguntas sobre las que el preentrenamiento continuado industrial también acierta.
 
-- **Split**: _TBD_
-- **`id`**: `_TBD_`
-- **Especialidad**: _TBD_
-- **Respuesta correcta**: `_TBD_`
+- **Split**: TBD
+- **`id`**: `TBD`
+- **Especialidad**: TBD
+- **Respuesta correcta**: `TBD`
 
 **Pregunta**:
 
-> _TBD_
+> TBD
 
 **Opciones**:
 
-- A) _TBD_
-- B) _TBD_
-- C) _TBD_
-- D) _TBD_
+- A) TBD
+- B) TBD
+- C) TBD
+- D) TBD
 
 **Generaciones**:
 
 | Modelo | Letra predicha | ¿Correcto? | Razonamiento (extracto) |
 |---|---|---|---|
-| `gemma-3-4b-it` | `_TBD_` | ✗ | _TBD_ |
-| `gemma-3-4b-it-qlora-finetune` | `_TBD_` | ✓ | _TBD_ |
-| `medgemma-4b-it` | `_TBD_` | ✓ | _TBD_ |
+| `gemma-3-4b-it` | `TBD` | ✗ | TBD |
+| `gemma-3-4b-it-qlora-finetune` | `TBD` | ✓ | TBD |
+| `medgemma-4b-it` | `TBD` | ✓ | TBD |
 
 ### Ejemplo ilustrativo 2 — brecha residual del fine-tune frente al techo industrial
 
-_Caso correspondiente a la fila 3 o 4 del patrón: el base y el fine-tune fallan, MedGemma acierta. Ilustra el límite del ajuste eficiente frente al preentrenamiento continuado de gran escala, donde el conocimiento factual o el patrón de razonamiento requerido excede lo que la adaptación sobre instrucciones logra inducir._
+Caso correspondiente a la fila 3 o 4 del patrón: el base y el fine-tune fallan, MedGemma acierta. Ilustra el límite del ajuste eficiente frente al preentrenamiento continuado de gran escala, donde el conocimiento factual o el patrón de razonamiento requerido excede lo que la adaptación sobre instrucciones logra inducir.
 
-- **Split**: _TBD_
-- **`id`**: `_TBD_`
-- **Especialidad**: _TBD_
-- **Respuesta correcta**: `_TBD_`
+- **Split**: TBD
+- **`id`**: `TBD`
+- **Especialidad**: TBD
+- **Respuesta correcta**: `TBD`
 
 **Pregunta**:
 
-> _TBD_
+> TBD
 
 **Opciones**:
 
-- A) _TBD_
-- B) _TBD_
-- C) _TBD_
-- D) _TBD_
+- A) TBD
+- B) TBD
+- C) TBD
+- D) TBD
 
 **Generaciones**:
 
 | Modelo | Letra predicha | ¿Correcto? | Razonamiento (extracto) |
 |---|---|---|---|
-| `gemma-3-4b-it` | `_TBD_` | ✗ | _TBD_ |
-| `gemma-3-4b-it-qlora-finetune` | `_TBD_` | ✗ | _TBD_ |
-| `medgemma-4b-it` | `_TBD_` | ✓ | _TBD_ |
+| `gemma-3-4b-it` | `TBD` | ✗ | TBD |
+| `gemma-3-4b-it-qlora-finetune` | `TBD` | ✗ | TBD |
+| `medgemma-4b-it` | `TBD` | ✓ | TBD |
 
 ## 6.8 Limitaciones del protocolo
 
@@ -808,10 +820,8 @@ El protocolo descrito presenta las siguientes limitaciones:
 
 3. **Truncamiento residual de la generación**. Con `max_new_tokens = 512`, una fracción menor de generaciones alcanza el límite antes de emitir la letra final, manifestándose como parse failure indistinguible del modo de falla genuino sin inspección de la cola de longitudes.
 
-4. **Tamaños de muestra y ausencia de intervalos de confianza**. Con _1,573_ ejemplos en `test_id` y _1,273_ en `test_ood`, las estimaciones de accuracy tienen incertidumbre estadística no negligible (error estándar del orden de ±0.01 a niveles típicos de accuracy). El reporte se restringe a accuracy puntual; no se computan intervalos de confianza ni pruebas de significancia entre modelos.
+4. **Cobertura limitada de bancos de exámenes**. La evaluación in-distribution se restringe a MedMCQA y la out-of-distribution a MedQA. Otros bancos relevantes (HEAD-QA, PubMedQA, CMExam) no se incluyen; la generalización a estilos de examen distintos de los dos cubiertos no se prueba.
 
-5. **Cobertura limitada de bancos de exámenes**. La evaluación in-distribution se restringe a MedMCQA y la out-of-distribution a MedQA. Otros bancos relevantes (HEAD-QA, PubMedQA, CMExam) no se incluyen; la generalización a estilos de examen distintos de los dos cubiertos no se prueba.
+5. **Dimensión translingüe no evaluada**. Aunque la base Gemma 3 admite múltiples idiomas y §3.1 anticipa potencial translingüe, la evaluación se realiza íntegramente en inglés. La transferencia del conocimiento médico adquirido a preguntas en español u otros idiomas queda fuera del alcance del presente reporte.
 
-6. **Dimensión translingüe no evaluada**. Aunque la base Gemma 3 admite múltiples idiomas y §3.1 anticipa potencial translingüe, la evaluación se realiza íntegramente en inglés. La transferencia del conocimiento médico adquirido a preguntas en español u otros idiomas queda fuera del alcance del presente reporte.
-
-7. **Análisis cualitativo no muestral**. La selección de cinco ejemplos del §6.7 es ilustrativa, no representativa. No permite cuantificar prevalencias de tipos de error sobre el corpus de evaluación; su rol es complementar las métricas con casos concretos que motiven el análisis posterior.
+6. **Análisis cualitativo no muestral**. La selección de cinco ejemplos del §6.7 es ilustrativa, no representativa. No permite cuantificar prevalencias de tipos de error sobre el corpus de evaluación.
