@@ -644,9 +644,9 @@ La construcción del prompt sigue el formato definido en §4.4.1: instrucción i
 | Parámetro | Valor | Justificación |
 |---|---|---|
 | `do_sample` | `False` (greedy) | Determinismo y reproducibilidad. Bajo evaluación médica, dos corridas deben producir el mismo resultado para que las diferencias entre modelos sean atribuibles al modelo y no a la varianza del muestreo. |
-| `max_new_tokens` | 512 | De acuerdo con §4.2.4, el percentil 99 cubre hasta 768 tokens y considera `user prompt` + `exp`, por lo que solo para `exp` la cantidad de 512 tokens podría cubrir hasta el percentil 99 con un truncamiento residual esperado situado por debajo del 1%. |
+| `max_new_tokens` | 1024 | El valor inicial de 512, derivado del p99 de longitud de explicación (sin considerar _user prompt_) en el corpus de entrenamiento (§4.2.4), resultó insuficiente en evaluación: una corrida preliminar sobre `test_ood` mostró ~27% de parse failures en `medgemma-4b-it` atribuibles a generación truncada antes de emitir "Answer: X". El valor de 1024 elimina el truncamiento como modo de falla operacional, manteniendo un costo de inferencia acotado: el peor caso por ejemplo crece ≤2× respecto al valor inicial, pero la mayoría de las generaciones terminan mucho antes del límite y no se ven afectadas. |
 | `temperature` | 1.0 | Inerte bajo decodificación greedy; declarada explícita por compatibilidad con versiones de la librería de generación que requieren un valor presente. |
-| `repetition_penalty` | 1.0 | Sin penalización. Si el modelo cae en bucles degenerados, ese modo de falla queda visible en la generación y en la tasa de parseo en lugar de ser ocultado por una corrección artificial. |
+| `repetition_penalty` | 1.15 | Penalización mínima diseñada para evitar el modo de falla canónico del greedy decoding (loops degenerados que repiten una frase hasta agotar `max_new_tokens`). |
 | `top_p`, `top_k` | no aplicados | Solo relevantes bajo muestreo; bajo greedy no operan. |
 
 Los tres modelos comparten exactamente esta configuración. La única variación admitida es el flag de cuantización 4-bit, dictado por la coherencia con la fase de entrenamiento del modelo del proyecto (§3.3) y no por el protocolo de evaluación.
