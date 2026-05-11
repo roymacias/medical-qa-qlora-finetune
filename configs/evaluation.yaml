@@ -12,10 +12,10 @@ seed: 42
 
 # Decoding kwargs forwarded to model.generate(). Greedy + max_new_tokens=512
 generation:
-  max_new_tokens: 512
+  max_new_tokens: 1024
   do_sample: false
   temperature: 1.0           # inert under greedy; kept explicit to avoid edge crashes
-  repetition_penalty: 1.0
+  repetition_penalty: 1.15
 
 # Splits to evaluate. test_id is MedMCQA-derived (in-distribution), test_ood is
 # MedQA-derived (out-of-distribution).
