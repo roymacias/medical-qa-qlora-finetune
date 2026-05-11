@@ -63,6 +63,7 @@ MEDMCQA_SPLITS = {"train", "validation", "test_id"}
 # Splits that share MedQA's schema (``answer_idx``, ``options``; no native id).
 MEDQA_SPLITS = {"test_ood"}
 
+LOG_EVERY = 40 # examples
 
 @dataclass
 class GenerationConfig:
@@ -154,6 +155,7 @@ def load_model_and_tokenizer(model_cfg: dict) -> tuple[Any, Any]:
             quantization_config=quant_cfg,
             device_map="auto",
             cache_dir=cache_dir,
+            attn_implementation="sdpa",
         )
     elif model_type == "peft_adapter":
         from peft import PeftModel  # imported lazily so non-finetune runs don't need peft
@@ -167,6 +169,7 @@ def load_model_and_tokenizer(model_cfg: dict) -> tuple[Any, Any]:
             quantization_config=quant_cfg,
             device_map="auto",
             cache_dir=cache_dir,
+            attn_implementation="sdpa",
         )
         model = PeftModel.from_pretrained(base, adapter_path)
     else:
@@ -185,6 +188,7 @@ def run_inference(
     split: str,
     gen_cfg: GenerationConfig,
     output_path: Path,
+    batch_size: int = 8,
 ) -> None:
     """Iterate the dataset, generate, parse, and stream predictions to JSONL.
 
@@ -194,42 +198,56 @@ def run_inference(
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    tokenizer.padding_side = "left"
+
     gen_kwargs = {
         "max_new_tokens": gen_cfg.max_new_tokens,
         "do_sample": gen_cfg.do_sample,
         "temperature": gen_cfg.temperature,
         "repetition_penalty": gen_cfg.repetition_penalty,
         "pad_token_id": tokenizer.pad_token_id,
+        "use_cache": True, 
     }
 
     n = len(dataset)
-    log.info("Inference: model=%s split=%s n=%d", model_name, split, n)
+    log.info("Inference: model=%s split=%s n=%d (batch_size=%d)", model_name, split, n, batch_size)
 
     with open(output_path, "w", encoding="utf-8") as f:
-        for idx in range(n):
-            row = dataset[idx]
-            prompt = _render_prompt(row, split, tokenizer)
-            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        for i in range(0, n, batch_size):
+            batch_rows = [dataset[idx] for idx in range(i, min(i + batch_size, n))]
+            
+            prompts = [_render_prompt(row, split, tokenizer) for row in batch_rows]
+            
+            inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
 
             output_ids = model.generate(**inputs, **gen_kwargs)
-            new_tokens = output_ids[0, inputs["input_ids"].shape[1]:]
-            generated = tokenizer.decode(new_tokens, skip_special_tokens=True)
+        
+            for j, row in enumerate(batch_rows):
+                input_len = inputs["input_ids"][j].shape[0]
+                new_tokens = output_ids[j, input_len:]
+                generated = tokenizer.decode(new_tokens, skip_special_tokens=True)
 
-            predicted = parse_letter(generated)
-            gold = _gold_letter(row, split)
+                predicted = parse_letter(generated)
+                gold = _gold_letter(row, split)
 
-            record = {
-                "id": _example_id(row, split, idx),
-                "model": model_name,
-                "split": split,
-                "ground_truth_letter": gold,
-                "predicted_letter": predicted,
-                "parse_success": predicted is not None,
-                "generated_text": generated,
-                "subject_name": _subject_name(row, split),
-            }
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                original_idx = i + j
+
+                record = {
+                    "id": _example_id(row, split, original_idx),
+                    "model": model_name,
+                    "split": split,
+                    "ground_truth_letter": gold,
+                    "predicted_letter": predicted,
+                    "parse_success": predicted is not None,
+                    "generated_text": generated,
+                    "subject_name": _subject_name(row, split),
+                }
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            
             f.flush()
 
-            if (idx + 1) % 50 == 0 or (idx + 1) == n:
-                log.info("  %s/%s: %d/%d", model_name, split, idx + 1, n)
+            # Progress logging
+            current_processed = min(i + batch_size, n)
+
+            if current_processed % LOG_EVERY == 0 or current_processed == n:
+                log.info("  %s/%s: %d/%d", model_name, split, current_processed, n)
