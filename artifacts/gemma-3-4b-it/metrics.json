@@ -1,0 +1,123 @@
+{
+  "test_id": {
+    "accuracy": 0.46153846153846156,
+    "parse_success_rate": 0.9974570883661793,
+    "n": 1573,
+    "n_correct": 726,
+    "n_parsed": 1569,
+    "by_subject": {
+      "Dental": {
+        "accuracy": 0.38764044943820225,
+        "n": 178,
+        "n_correct": 69
+      },
+      "Pediatrics": {
+        "accuracy": 0.44171779141104295,
+        "n": 163,
+        "n_correct": 72
+      },
+      "Gynaecology & Obstetrics": {
+        "accuracy": 0.3767123287671233,
+        "n": 146,
+        "n_correct": 55
+      },
+      "Medicine": {
+        "accuracy": 0.47183098591549294,
+        "n": 142,
+        "n_correct": 67
+      },
+      "Pharmacology": {
+        "accuracy": 0.5403225806451613,
+        "n": 124,
+        "n_correct": 67
+      },
+      "Surgery": {
+        "accuracy": 0.375,
+        "n": 120,
+        "n_correct": 45
+      },
+      "Anatomy": {
+        "accuracy": 0.4105263157894737,
+        "n": 95,
+        "n_correct": 39
+      },
+      "Pathology": {
+        "accuracy": 0.5698924731182796,
+        "n": 93,
+        "n_correct": 53
+      },
+      "Social & Preventive Medicine": {
+        "accuracy": 0.5227272727272727,
+        "n": 88,
+        "n_correct": 46
+      },
+      "Biochemistry": {
+        "accuracy": 0.627906976744186,
+        "n": 86,
+        "n_correct": 54
+      },
+      "Physiology": {
+        "accuracy": 0.5942028985507246,
+        "n": 69,
+        "n_correct": 41
+      },
+      "Microbiology": {
+        "accuracy": 0.43859649122807015,
+        "n": 57,
+        "n_correct": 25
+      },
+      "Forensic Medicine": {
+        "accuracy": 0.42857142857142855,
+        "n": 49,
+        "n_correct": 21
+      },
+      "Ophthalmology": {
+        "accuracy": 0.47619047619047616,
+        "n": 42,
+        "n_correct": 20
+      },
+      "ENT": {
+        "accuracy": 0.3888888888888889,
+        "n": 36,
+        "n_correct": 14
+      },
+      "Anaesthesia": {
+        "accuracy": 0.3076923076923077,
+        "n": 26,
+        "n_correct": 8
+      },
+      "Radiology": {
+        "accuracy": 0.45454545454545453,
+        "n": 22,
+        "n_correct": 10
+      },
+      "Skin": {
+        "accuracy": 0.5384615384615384,
+        "n": 13,
+        "n_correct": 7
+      },
+      "Orthopaedics": {
+        "accuracy": 0.5,
+        "n": 12,
+        "n_correct": 6
+      },
+      "Psychiatry": {
+        "accuracy": 0.6363636363636364,
+        "n": 11,
+        "n_correct": 7
+      },
+      "Unknown": {
+        "accuracy": 0.0,
+        "n": 1,
+        "n_correct": 0
+      }
+    }
+  },
+  "test_ood": {
+    "accuracy": 0.5333857030636292,
+    "parse_success_rate": 0.9992144540455616,
+    "n": 1273,
+    "n_correct": 679,
+    "n_parsed": 1272
+  }
+}
