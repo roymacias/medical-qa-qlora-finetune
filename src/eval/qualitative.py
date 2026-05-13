@@ -1,46 +1,18 @@
-"""Build qualitative analysis markdown for the cross-model 5-row pattern.
+"""Render qualitative analysis markdown for the configured cases.
 
-Reads predictions for the three models on a given split, finds 5 question IDs
-that satisfy the cross-model correctness pattern (anchored on the fine-tune),
-and emits a markdown file per model with the selected questions and that
-model's full ``generated_text``.
-
-Pattern (5 rows, totals: base 1✓/4✗, fine-tune 3✓/2✗, medgemma 4✓/1✗)
----------------------------------------------------------------------
-
-| # | base  | fine-tune | medgemma | story
-|---|-------|-----------|----------|-----------------------------------------------
-| 1 | wrong | right     | right    | fine-tuning closes the gap from the base model
-| 2 | wrong | right     | right    | fine-tuning closes the gap from the base model
-| 3 | wrong | wrong     | right    | residual gap compared to the industrial model
-| 4 | wrong | wrong     | right    | residual gap compared to the industrial model
-| 5 | right | right     | wrong    | even the industrial model fails sometimes
-
-Selection algorithm
--------------------
-1. Build per-id correctness across the 3 models on the intersection of IDs.
-2. For each row, sample one matching ID without replacement (deterministic
-   under ``seed`` via sorted candidates + ``random.Random.choice``).
-3. If a row has zero candidates, log a warning and emit a placeholder cell;
-   the markdown still renders, just with one empty section.
-
-This step is run separately from ``evaluation_pipeline.py`` because it needs
-predictions from all 3 models.
-
-Usage:
-
-    python -m src.eval.qualitative
-    python -m src.eval.qualitative --splits test_ood
-    python -m src.eval.qualitative --config configs/evaluation.yaml
+Each entry of ``CASE_IDS`` pins a single (split, id) tuple. The position of
+the entry in the list defines its case number (1-indexed). The module looks
+up each id in the prediction JSONL of every model declared in the
+evaluation config and writes one markdown file per (model, split) under
+``reports/qualitative/{model}/{split}.md``.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import logging
-import random
 import sys
-from dataclasses import dataclass
+from collections import defaultdict
 from pathlib import Path
 
 import yaml
@@ -54,22 +26,16 @@ DEFAULT_ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 DEFAULT_REPORTS_DIR = PROJECT_ROOT / "reports" / "qualitative"
 
 
-@dataclass(frozen=True)
-class PatternRow:
-    base: bool       # True = correct
-    finetune: bool
-    medgemma: bool
-    story: str
-
-
-# The 5 rows of the cross-model pattern (anchored on the fine-tune model).
-PATTERN: tuple[PatternRow, ...] = (
-    PatternRow(False, True,  True,  "fine-tuning closes the gap that the base model cannot"),
-    PatternRow(False, True,  True,  "fine-tuning closes the gap that the base model cannot"),
-    PatternRow(False, False, True,  "residual gap compared to the industrial ceiling"),
-    PatternRow(False, False, True,  "residual gap compared to the industrial ceiling"),
-    PatternRow(True,  True,  False, "even the industrial model fails sometimes"),
-)
+# ---------------------------------------------------------------------------
+# USER-EDITABLE: list of (split, id) tuples. The index defines the case
+# number. Each id must exist in the corresponding split's predictions JSONL
+# for every model declared in the evaluation config.
+# ---------------------------------------------------------------------------
+CASE_IDS: list[tuple[str, str]] = [
+    ("test_id",  "de09d388-bd4e-42a9-ac6b-ee2d95f822e2"),
+    ("test_id",  "d2398cd6-b205-4fb3-a4c4-9e575662b0bf"),
+    ("test_ood", "test_ood-00207"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -82,59 +48,12 @@ def _load_jsonl(path: Path) -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def _is_correct(record: dict) -> bool:
-    return bool(record.get("parse_success")) and (
-        record.get("predicted_letter") == record.get("ground_truth_letter")
-    )
+def _predictions_path(artifacts_dir: Path, model: str, split: str) -> Path:
+    return artifacts_dir / model / "predictions" / f"{split}.jsonl"
 
 
-# ---------------------------------------------------------------------------
-# Selection
-# ---------------------------------------------------------------------------
-
-
-def select_ids(
-    base_records: list[dict],
-    finetune_records: list[dict],
-    medgemma_records: list[dict],
-    seed: int = 42,
-) -> list[tuple[PatternRow, str | None]]:
-    """Pick one ID per pattern row. Returns list aligned to ``PATTERN``.
-
-    Each entry is ``(row, id)`` where ``id is None`` if no candidate satisfied
-    the row's constraints (logged as a warning).
-    """
-    correct_base = {r["id"]: _is_correct(r) for r in base_records}
-    correct_ft   = {r["id"]: _is_correct(r) for r in finetune_records}
-    correct_med  = {r["id"]: _is_correct(r) for r in medgemma_records}
-
-    common_ids = set(correct_base) & set(correct_ft) & set(correct_med)
-    if not common_ids:
-        raise RuntimeError("no overlapping IDs across the 3 prediction files")
-    log.info("Selecting from %d common IDs", len(common_ids))
-
-    rng = random.Random(seed)
-    selected: list[tuple[PatternRow, str | None]] = []
-    used: set[str] = set()
-    for row in PATTERN:
-        candidates = sorted(
-            i for i in common_ids
-            if i not in used
-            and correct_base[i] == row.base
-            and correct_ft[i]   == row.finetune
-            and correct_med[i]  == row.medgemma
-        )
-        if not candidates:
-            log.warning(
-                "no candidate for row (base=%s, ft=%s, med=%s); leaving empty",
-                row.base, row.finetune, row.medgemma,
-            )
-            selected.append((row, None))
-            continue
-        chosen = rng.choice(candidates)
-        used.add(chosen)
-        selected.append((row, chosen))
-    return selected
+def _records_by_id(records: list[dict]) -> dict[str, dict]:
+    return {r["id"]: r for r in records}
 
 
 # ---------------------------------------------------------------------------
@@ -142,57 +61,61 @@ def select_ids(
 # ---------------------------------------------------------------------------
 
 
-def _bool_glyph(b: bool) -> str:
-    return "✓" if b else "✗"
-
-
-def _records_by_id(records: list[dict]) -> dict[str, dict]:
-    return {r["id"]: r for r in records}
+def _summary_cell(rec: dict | None) -> str:
+    """Compact cell for the summary table: predicted letter and a glyph
+    indicating whether it matched the gold letter. ``_n/a_`` when the
+    record could not be located."""
+    if rec is None:
+        return "_n/a_"
+    predicted = rec.get("predicted_letter") or "—"
+    correct = (
+        bool(rec.get("parse_success"))
+        and rec.get("predicted_letter") == rec.get("ground_truth_letter")
+    )
+    return f"`{predicted}` {'✓' if correct else '✗'}"
 
 
 def render_markdown(
     model_name: str,
     split: str,
-    selected: list[tuple[PatternRow, str | None]],
-    records: list[dict],
+    cases_for_split: list[tuple[int, str]],
+    model_records: dict[str, dict[str, dict]],
+    all_models: list[str],
 ) -> str:
-    """Markdown for ONE model — same 5 IDs across the 3 model files."""
-    by_id = _records_by_id(records)
+    """Markdown for ONE (model, split). The summary table covers all three
+    models for the cases in this split; each per-case section shows the
+    generation of the model addressed by ``model_name``."""
     out: list[str] = []
-    out.append(f"# Análisis cualitativo — {model_name} / {split}")
+    out.append(f"# Qualitative analysis — {model_name} / {split}")
     out.append("")
-    out.append(
-        "Selection anchored to the fine-tune with a cross-pattern of 5 examples. "
-        "The same 5 IDs are used across all 3 models to enable side-by-side comparison."
-    )
+    out.append("Case identifiers are configured in `src/eval/qualitative.py` (`CASE_IDS`).")
     out.append("")
-    out.append("| # | base | fine-tune | medgemma | historia | id |")
-    out.append("|---|------|-----------|----------|----------|----|")
-    for i, (row, sid) in enumerate(selected, 1):
-        out.append(
-            f"| {i} | {_bool_glyph(row.base)} | {_bool_glyph(row.finetune)} | "
-            f"{_bool_glyph(row.medgemma)} | {row.story} | "
-            f"{f'`{sid}`' if sid else '_N/A_'} |"
-        )
+
+    header_cells = ["Case", "id", *[f"`{m}`" for m in all_models]]
+    out.append("| " + " | ".join(header_cells) + " |")
+    out.append("|" + "---|" * len(header_cells))
+    for case_num, sid in cases_for_split:
+        cells = [str(case_num), f"`{sid}`"]
+        for m in all_models:
+            cells.append(_summary_cell(model_records.get(m, {}).get(sid)))
+        out.append("| " + " | ".join(cells) + " |")
     out.append("")
     out.append("---")
     out.append("")
 
-    for i, (row, sid) in enumerate(selected, 1):
-        out.append(f"## Example {i}")
-        out.append(
-            f"_Pattern: base={_bool_glyph(row.base)}, "
-            f"fine-tune={_bool_glyph(row.finetune)}, "
-            f"medgemma={_bool_glyph(row.medgemma)} — {row.story}_"
-        )
+    own_records = model_records.get(model_name, {})
+    for case_num, sid in cases_for_split:
+        out.append(f"## Case {case_num}")
         out.append("")
-        if sid is None or sid not in by_id:
-            out.append("_(no candidate matching the pattern in this split)_")
+        rec = own_records.get(sid)
+        if rec is None:
+            out.append(
+                f"_(id `{sid}` not found in `{model_name}/{split}.jsonl`. "
+                f"Verify it is set correctly in `CASE_IDS`.)_"
+            )
             out.append("")
             continue
-        rec = by_id[sid]
         out.append(f"- **id**: `{sid}`")
-        out.append(f"- **subject**: {rec.get('subject_name') or 'N/A'}")
         out.append(f"- **gold**: `{rec.get('ground_truth_letter')}`")
         out.append(
             f"- **predicted**: `{rec.get('predicted_letter')}` "
@@ -205,6 +128,7 @@ def render_markdown(
         out.append((rec.get("generated_text") or "").rstrip())
         out.append("```")
         out.append("")
+
     return "\n".join(out)
 
 
@@ -213,50 +137,60 @@ def render_markdown(
 # ---------------------------------------------------------------------------
 
 
-def build_qualitative_for_split(
-    split: str,
+def _warn_on_placeholders() -> None:
+    for split, sid in CASE_IDS:
+        if sid == "REPLACE_ME":
+            log.warning(
+                "an entry for split=%s still holds the placeholder id; "
+                "edit CASE_IDS in src/eval/qualitative.py", split,
+            )
+
+
+def build_qualitative(
     base_model: str,
     finetune_model: str,
     medgemma_model: str,
     artifacts_dir: Path = DEFAULT_ARTIFACTS_DIR,
     reports_dir: Path = DEFAULT_REPORTS_DIR,
-    seed: int = 42,
 ) -> None:
-    """Read 3 prediction files, select 5 IDs, write 3 md files for this split."""
-    paths = {
-        base_model:     artifacts_dir / base_model     / "predictions" / f"{split}.jsonl",
-        finetune_model: artifacts_dir / finetune_model / "predictions" / f"{split}.jsonl",
-        medgemma_model: artifacts_dir / medgemma_model / "predictions" / f"{split}.jsonl",
-    }
-    for name, p in paths.items():
-        if not p.exists():
-            raise FileNotFoundError(f"missing predictions for {name}: {p}")
+    _warn_on_placeholders()
+    all_models = [base_model, finetune_model, medgemma_model]
 
-    base_records     = _load_jsonl(paths[base_model])
-    finetune_records = _load_jsonl(paths[finetune_model])
-    medgemma_records = _load_jsonl(paths[medgemma_model])
+    # Group cases by split, preserving the absolute case number (1-indexed
+    # over the full CASE_IDS list, not reset per split).
+    cases_by_split: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    for case_num, (split, sid) in enumerate(CASE_IDS, start=1):
+        cases_by_split[split].append((case_num, sid))
 
-    selected = select_ids(base_records, finetune_records, medgemma_records, seed=seed)
+    # Load every (model, split) prediction file once, indexed by id.
+    records_cache: dict[tuple[str, str], dict[str, dict]] = {}
+    for split in cases_by_split:
+        for model in all_models:
+            records_cache[(model, split)] = _records_by_id(
+                _load_jsonl(_predictions_path(artifacts_dir, model, split))
+            )
 
-    for model_name, records in (
-        (base_model, base_records),
-        (finetune_model, finetune_records),
-        (medgemma_model, medgemma_records),
-    ):
-        md = render_markdown(model_name, split, selected, records)
-        out_path = reports_dir / model_name / f"{split}.md"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(md, encoding="utf-8")
-        log.info("Wrote %s", out_path)
+    for split, cases_for_split in cases_by_split.items():
+        model_records = {m: records_cache[(m, split)] for m in all_models}
+        for model_name in all_models:
+            md = render_markdown(
+                model_name=model_name,
+                split=split,
+                cases_for_split=cases_for_split,
+                model_records=model_records,
+                all_models=all_models,
+            )
+            out_path = reports_dir / model_name / f"{split}.md"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(md, encoding="utf-8")
+            log.info("Wrote %s", out_path)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build cross-model qualitative markdown.")
-    parser.add_argument("--config", type=Path, default=DEFAULT_EVAL_CONFIG)
-    parser.add_argument(
-        "--splits", nargs="*",
-        help="Override splits from config (e.g. test_id test_ood).",
+    parser = argparse.ArgumentParser(
+        description="Render qualitative markdown for the configured cases.",
     )
+    parser.add_argument("--config", type=Path, default=DEFAULT_EVAL_CONFIG)
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -268,18 +202,12 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.config, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     qcfg = cfg["qualitative"]
-    splits = args.splits or qcfg.get("splits", ["test_id", "test_ood"])
-    seed = int(cfg.get("seed", 42))
 
-    for split in splits:
-        log.info("=== %s ===", split)
-        build_qualitative_for_split(
-            split=split,
-            base_model=qcfg["base_model"],
-            finetune_model=qcfg["finetune_model"],
-            medgemma_model=qcfg["medgemma_model"],
-            seed=seed,
-        )
+    build_qualitative(
+        base_model=qcfg["base_model"],
+        finetune_model=qcfg["finetune_model"],
+        medgemma_model=qcfg["medgemma_model"],
+    )
     return 0
 
 
