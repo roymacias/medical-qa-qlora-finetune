@@ -242,4 +242,5 @@ artifacts/*/*
 *.safetensors
 !artifacts/*/metrics.json
 !artifacts/gemma-3-4b-it-qlora-finetune/adapter
+!artifacts/*/predictions
 
