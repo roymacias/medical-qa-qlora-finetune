@@ -2,6 +2,9 @@
 # Variables & Environment
 # ============================================================================
 
+# Force Python into UTF-8 mode to prevent Windows CP1252 decoding crashes in third-party libs
+export PYTHONUTF8=1
+
 # Use 'uv run' to execute within the managed virtual environment without activation
 PYTHON := uv run python
 
@@ -18,16 +21,17 @@ ARGS ?=
 # --- Data Build Flags ---
 DATA_FLAGS :=
 ifdef CONFIG
-	DATA_FLAGS += --config $(CONFIG)
+	# Use abspath to prevent pathlib.relative_to() crashes in Python
+	DATA_FLAGS += --config $(abspath $(CONFIG))
 endif
-ifdef QUIET
+ifeq ($(QUIET), 1)
 	DATA_FLAGS += --quiet
 endif
 
 # --- Training Flags ---
 TRAIN_FLAGS :=
 ifdef CONFIG
-	TRAIN_FLAGS += --config $(CONFIG)
+	TRAIN_FLAGS += --config $(abspath $(CONFIG))
 endif
 ifdef RESUME
 	TRAIN_FLAGS += --resume-from-checkpoint $(RESUME)
@@ -37,18 +41,17 @@ ifdef MAX_STEPS
 endif
 
 # --- Evaluation Flags ---
-# Supports both global eval settings and specific model overrides
 EVAL_FLAGS :=
 ifdef EVAL_CONFIG
-	EVAL_FLAGS += --eval-config $(EVAL_CONFIG)
+	EVAL_FLAGS += --eval-config $(abspath $(EVAL_CONFIG))
 endif
 ifdef MODEL_CONFIG
-	EVAL_FLAGS += --model-config $(MODEL_CONFIG)
+	EVAL_FLAGS += --model-config $(abspath $(MODEL_CONFIG))
 endif
 ifdef SPLITS
 	EVAL_FLAGS += --splits $(SPLITS)
 endif
-ifdef FORCE
+ifeq ($(FORCE), 1)
 	EVAL_FLAGS += --force
 endif
 
