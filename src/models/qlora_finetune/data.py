@@ -7,6 +7,7 @@ The SFT trainer applies the tokenizer's chat template internally; with
 assistant turn is masked to ``-100`` at collation time, so cross-entropy is
 computed only on the assistant response.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,6 @@ from src.models.prompt import (
     render_medmcqa_assistant_content,
     render_medmcqa_user_content,
 )
-
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +32,11 @@ def _add_messages_column(dataset: Dataset) -> Dataset:
     ``assistant_only_loss=True``: a list of ``{"role", "content"}`` dicts that
     the trainer passes through ``apply_chat_template`` internally.
     """
+
     def _row_to_messages(row: dict) -> dict:
         return {
             MESSAGES_COLUMN: [
-                {"role": "user",      "content": render_medmcqa_user_content(row)},
+                {"role": "user", "content": render_medmcqa_user_content(row)},
                 {"role": "assistant", "content": render_medmcqa_assistant_content(row)},
             ],
         }
@@ -59,6 +60,6 @@ def load_train_eval_datasets(
         raise KeyError(f"requested splits not in DatasetDict: {missing} (have {sorted(dd)})")
 
     train_ds = _add_messages_column(dd[train_split])
-    eval_ds  = _add_messages_column(dd[eval_split])
+    eval_ds = _add_messages_column(dd[eval_split])
     log.info("Train: %d examples, Eval: %d examples", len(train_ds), len(eval_ds))
     return train_ds, eval_ds

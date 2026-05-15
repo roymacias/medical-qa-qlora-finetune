@@ -1,14 +1,14 @@
 """Prompt templates and rendering helpers used by training and evaluation.
 
-The user-side instruction and the assistant-side response are formatted. 
+The user-side instruction and the assistant-side response are formatted.
 Rendering is delegated to the model's chat template via
 ``tokenizer.apply_chat_template`` so the special turn tokens stay in sync with
 whatever Gemma version the tokenizer was trained against.
 """
+
 from __future__ import annotations
 
 from typing import Any, Mapping
-
 
 USER_TEMPLATE = (
     "You are a medical expert. Answer the following multiple-choice question "
@@ -19,7 +19,7 @@ USER_TEMPLATE = (
     "C) {opc}\n"
     "D) {opd}\n\n"
     "Reason step by step, then provide your answer in the format "
-    "\"Answer: <letter>\"."
+    '"Answer: <letter>".'
 )
 
 ASSISTANT_TEMPLATE = "Reasoning: {exp}\n\nAnswer: {letter}"
@@ -41,7 +41,10 @@ def render_medmcqa_user_content(row: Mapping[str, Any]) -> str:
     """Render the user-turn content (instruction + question + options)."""
     return USER_TEMPLATE.format(
         question=row["question"],
-        opa=row["opa"], opb=row["opb"], opc=row["opc"], opd=row["opd"],
+        opa=row["opa"],
+        opb=row["opb"],
+        opc=row["opc"],
+        opd=row["opd"],
     )
 
 
@@ -56,11 +59,13 @@ def render_medmcqa_assistant_content(row: Mapping[str, Any]) -> str:
 def render_medmcqa_full(row: Mapping[str, Any], tokenizer) -> str:
     """Apply the chat template to produce the complete training example."""
     msgs = [
-        {"role": "user",      "content": render_medmcqa_user_content(row)},
+        {"role": "user", "content": render_medmcqa_user_content(row)},
         {"role": "assistant", "content": render_medmcqa_assistant_content(row)},
     ]
     return tokenizer.apply_chat_template(
-        msgs, tokenize=False, add_generation_prompt=False,
+        msgs,
+        tokenize=False,
+        add_generation_prompt=False,
     )
 
 
@@ -73,7 +78,9 @@ def render_medmcqa_user(row: Mapping[str, Any], tokenizer) -> str:
     """
     msgs = [{"role": "user", "content": render_medmcqa_user_content(row)}]
     return tokenizer.apply_chat_template(
-        msgs, tokenize=False, add_generation_prompt=True,
+        msgs,
+        tokenize=False,
+        add_generation_prompt=True,
     )
 
 
@@ -91,7 +98,10 @@ def render_medqa_user_content(row: Mapping[str, Any]) -> str:
     opts = row["options"]
     return USER_TEMPLATE.format(
         question=row["question"],
-        opa=opts["A"], opb=opts["B"], opc=opts["C"], opd=opts["D"],
+        opa=opts["A"],
+        opb=opts["B"],
+        opc=opts["C"],
+        opd=opts["D"],
     )
 
 
@@ -99,5 +109,7 @@ def render_medqa_user(row: Mapping[str, Any], tokenizer) -> str:
     """Apply the chat template with ``add_generation_prompt=True`` for eval."""
     msgs = [{"role": "user", "content": render_medqa_user_content(row)}]
     return tokenizer.apply_chat_template(
-        msgs, tokenize=False, add_generation_prompt=True,
+        msgs,
+        tokenize=False,
+        add_generation_prompt=True,
     )

@@ -35,6 +35,7 @@ Output schema (one record per question)
         "subject_name": str | None,    # null for MedQA (no subject in source)
     }
 """
+
 from __future__ import annotations
 
 import json
@@ -54,7 +55,6 @@ from src.models.prompt import (
     render_medqa_user,
 )
 
-
 log = logging.getLogger(__name__)
 
 
@@ -63,7 +63,8 @@ MEDMCQA_SPLITS = {"train", "validation", "test_id"}
 # Splits that share MedQA's schema (``answer_idx``, ``options``; no native id).
 MEDQA_SPLITS = {"test_ood"}
 
-LOG_EVERY = 40 # examples
+LOG_EVERY = 40  # examples
+
 
 @dataclass
 class GenerationConfig:
@@ -75,6 +76,7 @@ class GenerationConfig:
     - ``temperature=1.0`` and ``repetition_penalty=1.0`` are inert under greedy
       but kept explicit to avoid version-specific crashes on edge values.
     """
+
     max_new_tokens: int = 512
     do_sample: bool = False
     temperature: float = 1.0
@@ -130,8 +132,7 @@ def load_model_and_tokenizer(model_cfg: dict) -> tuple[Any, Any]:
     See module docstring for the supported config types.
     """
     model_type = model_cfg["type"]
-    tokenizer_id = model_cfg.get("tokenizer_id") or model_cfg.get("model_id") \
-        or model_cfg.get("base_model_id")
+    tokenizer_id = model_cfg.get("tokenizer_id") or model_cfg.get("model_id") or model_cfg.get("base_model_id")
     if tokenizer_id is None:
         raise ValueError("model config must specify tokenizer_id, model_id, or base_model_id")
 
@@ -206,7 +207,7 @@ def run_inference(
         "temperature": gen_cfg.temperature,
         "repetition_penalty": gen_cfg.repetition_penalty,
         "pad_token_id": tokenizer.pad_token_id,
-        "use_cache": True, 
+        "use_cache": True,
     }
 
     n = len(dataset)
@@ -215,13 +216,13 @@ def run_inference(
     with open(output_path, "w", encoding="utf-8") as f:
         for i in range(0, n, batch_size):
             batch_rows = [dataset[idx] for idx in range(i, min(i + batch_size, n))]
-            
+
             prompts = [_render_prompt(row, split, tokenizer) for row in batch_rows]
-            
+
             inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
 
             output_ids = model.generate(**inputs, **gen_kwargs)
-        
+
             for j, row in enumerate(batch_rows):
                 input_len = inputs["input_ids"][j].shape[0]
                 new_tokens = output_ids[j, input_len:]
@@ -243,7 +244,7 @@ def run_inference(
                     "subject_name": _subject_name(row, split),
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            
+
             f.flush()
 
             # Progress logging

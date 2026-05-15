@@ -12,13 +12,13 @@ where the user requests ``val_size + test_id_size > pool_val_size``. When
 sourcing ``test_id`` from the train pool (10%, stratified, excluded from the
 train sample) and logs a WARNING.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 
 import pandas as pd
-
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +48,10 @@ class Splits:
 
     def sizes(self) -> dict[str, int]:
         return {
-            "train":      len(self.train),
+            "train": len(self.train),
             "validation": len(self.validation),
-            "test_id":    len(self.test_id),
-            "test_ood":   len(self.test_ood),
+            "test_id": len(self.test_id),
+            "test_ood": len(self.test_ood),
         }
 
 
@@ -92,9 +92,11 @@ def _warn_if_target_exceeds_pool(target: int, pool_size: int, name: str) -> None
     """Emit a WARNING (not error) when a config target cannot be fully honored."""
     if target > pool_size:
         logger.warning(
-            "%s=%d exceeds available pool of %d after preprocessing; falling "
-            "back to all %d available examples.",
-            name, target, pool_size, pool_size,
+            "%s=%d exceeds available pool of %d after preprocessing; falling back to all %d available examples.",
+            name,
+            target,
+            pool_size,
+            pool_size,
         )
 
 
@@ -104,9 +106,9 @@ def pool_sizes(
 ) -> dict[str, int]:
     """Return the per-source pool sizes after preprocessing."""
     return {
-        "medmcqa_train":      int((medmcqa_clean["_split"] == "train").sum()),
+        "medmcqa_train": int((medmcqa_clean["_split"] == "train").sum()),
         "medmcqa_validation": int((medmcqa_clean["_split"] == "validation").sum()),
-        "medqa_test":         int(len(medqa_clean)),
+        "medqa_test": int(len(medqa_clean)),
     }
 
 
@@ -151,17 +153,15 @@ def build_splits(
     """
     from .deduplication import QHASH_COL
 
-    pool_train = (
-        medmcqa_clean[medmcqa_clean["_split"] == "train"].reset_index(drop=True)
-    )
-    pool_val = (
-        medmcqa_clean[medmcqa_clean["_split"] == "validation"].reset_index(drop=True)
-    )
+    pool_train = medmcqa_clean[medmcqa_clean["_split"] == "train"].reset_index(drop=True)
+    pool_val = medmcqa_clean[medmcqa_clean["_split"] == "validation"].reset_index(drop=True)
     pool_test_ood = medqa_clean.reset_index(drop=True)
 
     logger.info(
         "build_splits: pools train=%d val=%d test_ood=%d",
-        len(pool_train), len(pool_val), len(pool_test_ood),
+        len(pool_train),
+        len(pool_val),
+        len(pool_test_ood),
     )
 
     # Per-pool overflow warnings.
@@ -186,31 +186,41 @@ def build_splits(
             "stratified by specialty and excluded from the train sample. "
             "Reduce val_size in the config to keep test_id sourced from the "
             "validation pool.",
-            val_size, len(pool_val), test_id_target,
+            val_size,
+            len(pool_val),
+            test_id_target,
             TEST_ID_FALLBACK_FRACTION * 100,
         )
         validation = pool_val.sample(frac=1, random_state=seed).reset_index(drop=True)
         test_id = stratified_sample(
-            pool_train, test_id_target, STRATIFY_COL, seed=seed,
+            pool_train,
+            test_id_target,
+            STRATIFY_COL,
+            seed=seed,
         )
-        train_pool_excl = pool_train[
-            ~pool_train[QHASH_COL].isin(set(test_id[QHASH_COL]))
-        ].reset_index(drop=True)
+        train_pool_excl = pool_train[~pool_train[QHASH_COL].isin(set(test_id[QHASH_COL]))].reset_index(drop=True)
         train = stratified_sample(
-            train_pool_excl, train_size, STRATIFY_COL, seed=seed,
+            train_pool_excl,
+            train_size,
+            STRATIFY_COL,
+            seed=seed,
         )
     else:
         # Standard path: stratified val from val pool; test_id is the
         # complement (also approximately stratified).
         validation = stratified_sample(
-            pool_val, val_size, STRATIFY_COL, seed=seed,
+            pool_val,
+            val_size,
+            STRATIFY_COL,
+            seed=seed,
         )
         val_hashes = set(validation[QHASH_COL])
-        test_id = pool_val[
-            ~pool_val[QHASH_COL].isin(val_hashes)
-        ].reset_index(drop=True)
+        test_id = pool_val[~pool_val[QHASH_COL].isin(val_hashes)].reset_index(drop=True)
         train = stratified_sample(
-            pool_train, train_size, STRATIFY_COL, seed=seed,
+            pool_train,
+            train_size,
+            STRATIFY_COL,
+            seed=seed,
         )
 
     test_ood = pool_test_ood.copy()
@@ -224,8 +234,10 @@ def build_splits(
 
     logger.info(
         "build_splits: produced train=%d validation=%d test_id=%d test_ood=%d",
-        len(splits.train), len(splits.validation),
-        len(splits.test_id), len(splits.test_ood),
+        len(splits.train),
+        len(splits.validation),
+        len(splits.test_id),
+        len(splits.test_ood),
     )
     return splits
 
@@ -234,26 +246,29 @@ def assert_no_leakage_across_splits(splits: Splits) -> None:
     """Raise if any pair of splits shares a question hash."""
     from .deduplication import QHASH_COL
 
-    if any(QHASH_COL not in df.columns for df in (
-        splits.train, splits.validation, splits.test_id, splits.test_ood,
-    )):
-        raise ValueError(
-            f"all splits must carry the {QHASH_COL!r} column for leakage check."
+    if any(
+        QHASH_COL not in df.columns
+        for df in (
+            splits.train,
+            splits.validation,
+            splits.test_id,
+            splits.test_ood,
         )
+    ):
+        raise ValueError(f"all splits must carry the {QHASH_COL!r} column for leakage check.")
 
     pairs = [
         ("train", "validation", splits.train, splits.validation),
-        ("train", "test_id",    splits.train, splits.test_id),
-        ("train", "test_ood",   splits.train, splits.test_ood),
-        ("validation", "test_id",  splits.validation, splits.test_id),
+        ("train", "test_id", splits.train, splits.test_id),
+        ("train", "test_ood", splits.train, splits.test_ood),
+        ("validation", "test_id", splits.validation, splits.test_id),
         ("validation", "test_ood", splits.validation, splits.test_ood),
-        ("test_id", "test_ood",    splits.test_id,    splits.test_ood),
+        ("test_id", "test_ood", splits.test_id, splits.test_ood),
     ]
     for name_a, name_b, a, b in pairs:
         overlap = set(a[QHASH_COL]) & set(b[QHASH_COL])
         if overlap:
             raise RuntimeError(
-                f"leakage detected between splits {name_a!r} and {name_b!r}: "
-                f"{len(overlap)} shared hashes"
+                f"leakage detected between splits {name_a!r} and {name_b!r}: {len(overlap)} shared hashes"
             )
         logger.info("split-leakage[%s vs %s]: 0", name_a, name_b)
