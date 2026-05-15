@@ -1,0 +1,18 @@
+# .pre-commit-config.yaml
+repos:
+  # 1. Standard Git Sanity Checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace       # Strips trailing whitespace across all files
+      - id: end-of-file-fixer         # Ensures files end with a newline
+      - id: check-yaml                # Validates YAML syntax correctness
+      - id: check-added-large-files   # Prevents accidental commits of heavy files or weights
+
+  # 2. Ruff: High-Performance Linter and Formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+      - id: ruff                      # Executes linting and resolves auto-fixable errors
+        args: [ --fix ]
+      - id: ruff-format               # Enforces code formatting compliance across the repository
