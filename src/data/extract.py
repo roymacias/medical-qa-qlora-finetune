@@ -31,6 +31,7 @@ Dependencies
 ------------
 ``datasets`` (HuggingFace) — install with ``pip install datasets``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,7 +39,6 @@ import logging
 from pathlib import Path
 
 from datasets import DatasetDict, load_dataset
-
 
 # HuggingFace Hub identifiers. Adjust here if the canonical mirror moves.
 MEDMCQA_HF_ID = "openlifescienceai/medmcqa"
@@ -83,10 +83,7 @@ def _download_and_save(
 
     missing = [name for name in keep_splits if name not in full]
     if missing:
-        raise RuntimeError(
-            f"Dataset {hf_id!r} is missing expected splits: {missing}. "
-            f"Got splits: {list(full)}"
-        )
+        raise RuntimeError(f"Dataset {hf_id!r} is missing expected splits: {missing}. Got splits: {list(full)}")
 
     subset = DatasetDict({name: full[name] for name in keep_splits})
     for name, split in subset.items():
@@ -108,9 +105,7 @@ def extract_medqa(force: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Download MedMCQA and MedQA-USMLE-4-options to data/raw/."
-    )
+    parser = argparse.ArgumentParser(description="Download MedMCQA and MedQA-USMLE-4-options to data/raw/.")
     parser.add_argument(
         "--force",
         action="store_true",

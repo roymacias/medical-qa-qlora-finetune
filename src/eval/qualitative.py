@@ -6,6 +6,7 @@ up each id in the prediction JSONL of every model declared in the
 evaluation config and writes one markdown file per (model, split) under
 ``reports/qualitative/{model}/{split}.md``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,7 +17,6 @@ from collections import defaultdict
 from pathlib import Path
 
 import yaml
-
 
 log = logging.getLogger(__name__)
 
@@ -32,8 +32,8 @@ DEFAULT_REPORTS_DIR = PROJECT_ROOT / "reports" / "qualitative"
 # for every model declared in the evaluation config.
 # ---------------------------------------------------------------------------
 CASE_IDS: list[tuple[str, str]] = [
-    ("test_id",  "de09d388-bd4e-42a9-ac6b-ee2d95f822e2"),
-    ("test_id",  "d2398cd6-b205-4fb3-a4c4-9e575662b0bf"),
+    ("test_id", "de09d388-bd4e-42a9-ac6b-ee2d95f822e2"),
+    ("test_id", "d2398cd6-b205-4fb3-a4c4-9e575662b0bf"),
     ("test_ood", "test_ood-00207"),
 ]
 
@@ -68,10 +68,7 @@ def _summary_cell(rec: dict | None) -> str:
     if rec is None:
         return "_n/a_"
     predicted = rec.get("predicted_letter") or "—"
-    correct = (
-        bool(rec.get("parse_success"))
-        and rec.get("predicted_letter") == rec.get("ground_truth_letter")
-    )
+    correct = bool(rec.get("parse_success")) and rec.get("predicted_letter") == rec.get("ground_truth_letter")
     return f"`{predicted}` {'✓' if correct else '✗'}"
 
 
@@ -110,17 +107,13 @@ def render_markdown(
         rec = own_records.get(sid)
         if rec is None:
             out.append(
-                f"_(id `{sid}` not found in `{model_name}/{split}.jsonl`. "
-                f"Verify it is set correctly in `CASE_IDS`.)_"
+                f"_(id `{sid}` not found in `{model_name}/{split}.jsonl`. Verify it is set correctly in `CASE_IDS`.)_"
             )
             out.append("")
             continue
         out.append(f"- **id**: `{sid}`")
         out.append(f"- **gold**: `{rec.get('ground_truth_letter')}`")
-        out.append(
-            f"- **predicted**: `{rec.get('predicted_letter')}` "
-            f"(parse_success={rec.get('parse_success')})"
-        )
+        out.append(f"- **predicted**: `{rec.get('predicted_letter')}` (parse_success={rec.get('parse_success')})")
         out.append("")
         out.append("**Model generation:**")
         out.append("")
@@ -141,8 +134,8 @@ def _warn_on_placeholders() -> None:
     for split, sid in CASE_IDS:
         if sid == "REPLACE_ME":
             log.warning(
-                "an entry for split=%s still holds the placeholder id; "
-                "edit CASE_IDS in src/eval/qualitative.py", split,
+                "an entry for split=%s still holds the placeholder id; edit CASE_IDS in src/eval/qualitative.py",
+                split,
             )
 
 
@@ -166,9 +159,7 @@ def build_qualitative(
     records_cache: dict[tuple[str, str], dict[str, dict]] = {}
     for split in cases_by_split:
         for model in all_models:
-            records_cache[(model, split)] = _records_by_id(
-                _load_jsonl(_predictions_path(artifacts_dir, model, split))
-            )
+            records_cache[(model, split)] = _records_by_id(_load_jsonl(_predictions_path(artifacts_dir, model, split)))
 
     for split, cases_for_split in cases_by_split.items():
         model_records = {m: records_cache[(m, split)] for m in all_models}

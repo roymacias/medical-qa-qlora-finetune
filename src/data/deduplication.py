@@ -6,6 +6,7 @@ first occurrence. The hash column ``_qhash`` is left attached to the returned
 DataFrame because it is also reused by the cross-dataset leakage check
 (``src.data.leakage``).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,7 +14,6 @@ import logging
 import re
 
 import pandas as pd
-
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,9 @@ def dedup(df: pd.DataFrame, name: str = "dataset") -> pd.DataFrame:
 
     logger.info(
         "dedup[%s]: %d -> %d (duplicates removed: %d)",
-        name, n_before, len(df), n_dups,
+        name,
+        n_before,
+        len(df),
+        n_dups,
     )
     return df

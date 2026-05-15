@@ -26,6 +26,7 @@ Dependencies
 ------------
 ``datasets``, ``langdetect``, ``pandas``, ``pyyaml``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,7 +53,6 @@ from .splits import (
     build_splits,
     pool_sizes,
 )
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -87,6 +87,7 @@ def set_all_seeds(seed: int) -> None:
     # langdetect's internal RNG must be seeded explicitly to avoid jitter on
     # short or ambiguous strings.
     import langdetect
+
     langdetect.DetectorFactory.seed = seed
 
 
@@ -111,9 +112,7 @@ def load_config(path: Path) -> dict[str, Any]:
     required_splits = {"train_size", "val_size"}
     missing_splits = required_splits - cfg["splits"].keys()
     if missing_splits:
-        raise ValueError(
-            f"config {path} missing splits keys: {missing_splits}"
-        )
+        raise ValueError(f"config {path} missing splits keys: {missing_splits}")
 
     if "test_id_size" in cfg["splits"]:
         raise ValueError(
@@ -174,7 +173,7 @@ def run_pipeline(
 
     attrition: dict[str, dict[str, int]] = {
         "MedMCQA": {"raw": len(medmcqa_df)},
-        "MedQA":   {"raw": len(medqa_df)},
+        "MedQA": {"raw": len(medqa_df)},
     }
 
     # 1. Quality filtering
@@ -215,7 +214,8 @@ def run_pipeline(
 
     # 5. Build experiment splits.
     splits = build_splits(
-        medmcqa_df, medqa_df,
+        medmcqa_df,
+        medqa_df,
         train_size=train_size,
         val_size=val_size,
         seed=seed,
@@ -245,19 +245,23 @@ def save_outputs(
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     # Cleaned corpora at the top of data/processed/
-    DatasetDict({
-        "medmcqa_processed": to_clean_dataset(medmcqa_clean),
-        "medqa_processed":   to_clean_dataset(medqa_clean),
-    }).save_to_disk(str(PROCESSED_DIR))
+    DatasetDict(
+        {
+            "medmcqa_processed": to_clean_dataset(medmcqa_clean),
+            "medqa_processed": to_clean_dataset(medqa_clean),
+        }
+    ).save_to_disk(str(PROCESSED_DIR))
     log.info("Cleaned corpora saved to %s", PROCESSED_DIR)
 
     # Experiment splits one level down
-    DatasetDict({
-        "train":      to_clean_dataset(splits.train),
-        "validation": to_clean_dataset(splits.validation),
-        "test_id":    to_clean_dataset(splits.test_id),
-        "test_ood":   to_clean_dataset(splits.test_ood),
-    }).save_to_disk(str(SPLITS_DIR))
+    DatasetDict(
+        {
+            "train": to_clean_dataset(splits.train),
+            "validation": to_clean_dataset(splits.validation),
+            "test_id": to_clean_dataset(splits.test_id),
+            "test_ood": to_clean_dataset(splits.test_ood),
+        }
+    ).save_to_disk(str(SPLITS_DIR))
     log.info("Experiment splits saved to %s", SPLITS_DIR)
 
     metadata = {
@@ -267,8 +271,7 @@ def save_outputs(
         "config": {
             "train_size": train_size,
             "val_size": val_size,
-            "test_id_size": "derived (complement of val_size in validation pool, "
-                            "or 10% of train pool fallback)",
+            "test_id_size": "derived (complement of val_size in validation pool, or 10% of train pool fallback)",
         },
         "attrition": attrition,
         "pool_sizes": pools,
@@ -289,11 +292,14 @@ def main(argv: list[str] | None = None) -> int:
         description="Build cleaned corpora and experiment splits from data/raw/.",
     )
     parser.add_argument(
-        "--config", type=Path, default=DEFAULT_CONFIG_PATH,
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
         help=f"Path to the YAML config (default: {DEFAULT_CONFIG_PATH.relative_to(PROJECT_ROOT)}).",
     )
     parser.add_argument(
-        "--quiet", action="store_true",
+        "--quiet",
+        action="store_true",
         help="Reduce log verbosity to WARNING.",
     )
     args = parser.parse_args(argv)
@@ -309,11 +315,16 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.getLogger(__name__).info(
         "Loaded config from %s (seed=%d, train_size=%d, val_size=%d)",
-        args.config.relative_to(PROJECT_ROOT), seed, train_size, val_size,
+        args.config.relative_to(PROJECT_ROOT),
+        seed,
+        train_size,
+        val_size,
     )
 
     medmcqa_clean, medqa_clean, splits, attrition, pools = run_pipeline(
-        seed=seed, train_size=train_size, val_size=val_size,
+        seed=seed,
+        train_size=train_size,
+        val_size=val_size,
     )
     save_outputs(
         medmcqa_clean=medmcqa_clean,

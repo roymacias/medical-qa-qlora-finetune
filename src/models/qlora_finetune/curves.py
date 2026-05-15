@@ -13,12 +13,12 @@ function logs a warning and returns without writing the figure (the
 ``trainer_state.json`` itself is still persisted by the pipeline, so the plot
 can be regenerated later by a separate environment).
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-
 
 log = logging.getLogger(__name__)
 
@@ -71,8 +71,7 @@ def plot_loss_curves(state_path: Path, output_path: Path) -> None:
         import matplotlib.pyplot as plt
     except ImportError:
         log.warning(
-            "matplotlib not installed; skipping figure generation. "
-            "trainer_state.json was still persisted at %s.",
+            "matplotlib not installed; skipping figure generation. trainer_state.json was still persisted at %s.",
             state_path,
         )
         return
@@ -87,15 +86,20 @@ def plot_loss_curves(state_path: Path, output_path: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 6))
     if train_steps:
         ax.plot(
-            train_steps, train_losses,
+            train_steps,
+            train_losses,
             label=f"train ({len(train_steps)} pts)",
-            color="steelblue", alpha=0.7,
+            color="steelblue",
+            alpha=0.7,
         )
     if eval_steps:
         ax.plot(
-            eval_steps, eval_losses,
+            eval_steps,
+            eval_losses,
             label=f"eval ({len(eval_steps)} pts)",
-            color="darkorange", marker="o", linewidth=2,
+            color="darkorange",
+            marker="o",
+            linewidth=2,
         )
     ax.set_xlabel("Optimization step")
     ax.set_ylabel("Cross-entropy loss")

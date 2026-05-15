@@ -18,11 +18,11 @@ Patterns (in order):
 3. ``\\\\boxed\\{([A-D])\\}`` — LaTeX-style boxed answer, common in math-tuned models.
 4. ``\\b([A-D])\\s*$`` — bare letter at end of text, last-resort fallback.
 """
+
 from __future__ import annotations
 
 import re
 from typing import Optional
-
 
 PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?:final\s+)?[Aa]nswer(?:\s+is)?:\s*\(?([A-D])\)?"),

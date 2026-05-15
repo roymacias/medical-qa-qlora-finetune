@@ -1,6 +1,7 @@
 """Build the QLoRA-trainable model: 4-bit base + fresh LoRA adapter.
 
-The base is loaded under NF4 + double quantization with bf16 compute dtype. The adapter is created from a ``LoraConfig`` and attached via
+The base is loaded under NF4 + double quantization with bf16 compute dtype.
+The adapter is created from a ``LoraConfig`` and attached via
 ``peft.get_peft_model``. Before attachment, the base is run through
 ``prepare_model_for_kbit_training`` which:
 
@@ -11,6 +12,7 @@ The base is loaded under NF4 + double quantization with bf16 compute dtype. The 
 
 The trainable parameter count is logged on construction.
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,7 +25,6 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
 )
-
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +105,9 @@ def build_model_and_tokenizer(
 
     log.info(
         "Attaching LoRA: r=%s alpha=%s targets=%s",
-        lora_cfg["r"], lora_cfg["lora_alpha"], lora_cfg["target_modules"],
+        lora_cfg["r"],
+        lora_cfg["lora_alpha"],
+        lora_cfg["target_modules"],
     )
     peft_cfg = _build_lora_config(lora_cfg)
     model = get_peft_model(model, peft_cfg)

@@ -34,6 +34,7 @@ Usage
     python -m src.pipelines.training_pipeline --resume-from-checkpoint latest
     python -m src.pipelines.training_pipeline --max-steps 5    # smoke test
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,6 @@ from trl import SFTConfig, SFTTrainer
 from src.models.qlora_finetune.curves import plot_loss_curves
 from src.models.qlora_finetune.data import load_train_eval_datasets
 from src.models.qlora_finetune.model import build_model_and_tokenizer
-
 
 log = logging.getLogger(__name__)
 
@@ -100,13 +100,11 @@ def _build_sft_config(
 ) -> SFTConfig:
     kwargs: dict = {
         "output_dir": str(output_root / "checkpoints"),
-
         # Duration / batch
         "num_train_epochs": int(train_cfg.get("num_train_epochs", 1)),
         "per_device_train_batch_size": int(train_cfg["per_device_train_batch_size"]),
         "per_device_eval_batch_size": int(train_cfg.get("per_device_eval_batch_size", 4)),
         "gradient_accumulation_steps": int(train_cfg["gradient_accumulation_steps"]),
-
         # Optimizer / schedule
         "optim": train_cfg.get("optim", "paged_adamw_32bit"),
         "learning_rate": float(train_cfg["learning_rate"]),
@@ -114,20 +112,16 @@ def _build_sft_config(
         "warmup_ratio": float(train_cfg.get("warmup_ratio", 0.03)),
         "weight_decay": float(train_cfg.get("weight_decay", 0.0)),
         "max_grad_norm": float(train_cfg.get("max_grad_norm", 1.0)),
-
         # Precision
         "bf16": bool(train_cfg.get("bf16", True)),
-
         # Memory
         "gradient_checkpointing": bool(train_cfg.get("gradient_checkpointing", True)),
         "gradient_checkpointing_kwargs": {"use_reentrant": False},
-
         # Eval / logging cadence
         "eval_strategy": train_cfg.get("eval_strategy", "steps"),
         "eval_steps": int(train_cfg.get("eval_steps", 200)),
         "logging_strategy": train_cfg.get("logging_strategy", "steps"),
         "logging_steps": int(train_cfg.get("logging_steps", 25)),
-
         # Checkpointing
         "save_strategy": train_cfg.get("save_strategy", "steps"),
         "save_steps": int(train_cfg.get("save_steps", 200)),
@@ -135,10 +129,8 @@ def _build_sft_config(
         "load_best_model_at_end": bool(train_cfg.get("load_best_model_at_end", True)),
         "metric_for_best_model": train_cfg.get("metric_for_best_model", "eval_loss"),
         "greater_is_better": bool(train_cfg.get("greater_is_better", False)),
-
         # External reporters (wandb/tensorboard) — opt-in via config.
         "report_to": train_cfg.get("report_to", "none"),
-
         # SFT-specific
         # The dataset has a `messages` column; SFTTrainer auto-detects it,
         # applies the chat template internally and (with the flag below)
@@ -247,17 +239,23 @@ def run(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="QLoRA SFT training pipeline.")
     parser.add_argument(
-        "--config", type=Path, default=DEFAULT_CONFIG,
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG,
         help=f"Training config YAML (default: {DEFAULT_CONFIG.relative_to(PROJECT_ROOT)})",
     )
     parser.add_argument(
-        "--resume-from-checkpoint", type=str, default=None,
+        "--resume-from-checkpoint",
+        type=str,
+        default=None,
         help="Checkpoint path or 'latest' to resume from a prior run.",
     )
     parser.add_argument(
-        "--max-steps", type=int, default=None,
+        "--max-steps",
+        type=int,
+        default=None,
         help="Override num_train_epochs by capping total optimizer steps. "
-             "Useful for smoke-testing the pipeline end-to-end on a few steps.",
+        "Useful for smoke-testing the pipeline end-to-end on a few steps.",
     )
     args = parser.parse_args(argv)
 

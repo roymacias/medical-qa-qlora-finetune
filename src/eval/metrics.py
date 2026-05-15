@@ -26,6 +26,7 @@ Per split:
   subject accuracy. Each subject bucket has just ``accuracy``, ``n``, and
   ``n_correct``
 """
+
 from __future__ import annotations
 
 import json
@@ -36,17 +37,14 @@ UNKNOWN_SUBJECT = "Unknown"
 
 
 def _is_correct(record: dict) -> bool:
-    return bool(record.get("parse_success")) and (
-        record.get("predicted_letter") == record.get("ground_truth_letter")
-    )
+    return bool(record.get("parse_success")) and (record.get("predicted_letter") == record.get("ground_truth_letter"))
 
 
 def _split_summary(records: list[dict]) -> dict:
     """Top-level per-split summary: accuracy + parse_success_rate + counts."""
     n = len(records)
     if n == 0:
-        return {"accuracy": None, "parse_success_rate": None,
-                "n": 0, "n_correct": 0, "n_parsed": 0}
+        return {"accuracy": None, "parse_success_rate": None, "n": 0, "n_correct": 0, "n_parsed": 0}
     n_correct = sum(1 for r in records if _is_correct(r))
     n_parsed = sum(1 for r in records if r.get("parse_success"))
     return {
@@ -74,10 +72,7 @@ def _by_subject(records: list[dict]) -> dict[str, dict]:
         subj = r.get("subject_name") or UNKNOWN_SUBJECT
         buckets[subj].append(r)
     # Sort by descending sample size for readability.
-    return {
-        subj: _subject_summary(rs)
-        for subj, rs in sorted(buckets.items(), key=lambda kv: -len(kv[1]))
-    }
+    return {subj: _subject_summary(rs) for subj, rs in sorted(buckets.items(), key=lambda kv: -len(kv[1]))}
 
 
 def compute_metrics(records_by_split: dict[str, list[dict]]) -> dict:

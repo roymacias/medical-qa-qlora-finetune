@@ -34,6 +34,7 @@ CLI flags
 ``--splits``        Subset of splits to run (default: as declared in eval config).
 ``--force``         Re-run inference even if predictions JSONL already exists.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,7 +51,6 @@ from src.eval.inference import (
     run_inference,
 )
 from src.eval.metrics import compute_metrics, load_predictions, save_metrics
-
 
 log = logging.getLogger(__name__)
 
@@ -133,15 +133,13 @@ def run(
             del model
             try:
                 import torch
+
                 torch.cuda.empty_cache()
             except Exception:  # pragma: no cover - cuda may be absent
                 pass
 
     # Compute metrics across ALL requested splits (re-reads predictions JSONL).
-    records_by_split = {
-        split: load_predictions(pred_dir / f"{split}.jsonl")
-        for split in splits
-    }
+    records_by_split = {split: load_predictions(pred_dir / f"{split}.jsonl") for split in splits}
     metrics = compute_metrics(records_by_split)
     metrics_path = out_dir / "metrics.json"
     save_metrics(metrics, metrics_path)
@@ -153,23 +151,30 @@ def main(argv: list[str] | None = None) -> int:
         description="Run evaluation (inference + metrics) for a single model.",
     )
     parser.add_argument(
-        "--model", required=True,
+        "--model",
+        required=True,
         help="Model name; resolves to configs/models/{name}.yaml unless --model-config is given.",
     )
     parser.add_argument(
-        "--eval-config", type=Path, default=DEFAULT_EVAL_CONFIG,
+        "--eval-config",
+        type=Path,
+        default=DEFAULT_EVAL_CONFIG,
         help=f"Horizontal eval config (default: {DEFAULT_EVAL_CONFIG.relative_to(PROJECT_ROOT)})",
     )
     parser.add_argument(
-        "--model-config", type=Path, default=None,
+        "--model-config",
+        type=Path,
+        default=None,
         help="Override path to the per-model YAML.",
     )
     parser.add_argument(
-        "--splits", nargs="*",
+        "--splits",
+        nargs="*",
         help="Override splits from eval config (e.g. test_id test_ood).",
     )
     parser.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Re-run inference even if predictions JSONL exists.",
     )
     args = parser.parse_args(argv)
@@ -182,7 +187,8 @@ def main(argv: list[str] | None = None) -> int:
     if model_cfg.get("name") not in (None, args.model):
         log.warning(
             "model name in config (%r) differs from --model (%r); using --model",
-            model_cfg.get("name"), args.model,
+            model_cfg.get("name"),
+            args.model,
         )
 
     run(

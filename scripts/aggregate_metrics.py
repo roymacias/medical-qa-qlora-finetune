@@ -20,6 +20,7 @@ Output structure
 when the denominator is positive and the three accuracies are present;
 ``null`` otherwise.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,7 +30,6 @@ import sys
 from pathlib import Path
 
 import yaml
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EVAL_CONFIG = PROJECT_ROOT / "configs" / "evaluation.yaml"
@@ -60,9 +60,7 @@ def _gap_recovered(
 def aggregate(eval_cfg: dict, artifacts_dir: Path = ARTIFACTS_DIR) -> dict:
     base, finetune, medgemma = _model_order(eval_cfg)
     if not all((base, finetune, medgemma)):
-        raise ValueError(
-            "eval config missing one of qualitative.model_name"
-        )
+        raise ValueError("eval config missing one of qualitative.model_name")
     models = [base, finetune, medgemma]
 
     per_model: dict[str, dict] = {}
@@ -77,7 +75,7 @@ def aggregate(eval_cfg: dict, artifacts_dir: Path = ARTIFACTS_DIR) -> dict:
     gap_by_split: dict[str, float | None] = {}
     for split in ("test_id", "test_ood"):
         gap_by_split[split] = _gap_recovered(
-            per_model.get(base,     {}).get(split, {}).get("accuracy"),
+            per_model.get(base, {}).get(split, {}).get("accuracy"),
             per_model.get(finetune, {}).get(split, {}).get("accuracy"),
             per_model.get(medgemma, {}).get(split, {}).get("accuracy"),
         )
@@ -95,7 +93,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Aggregate per-model metrics.json into a single comparison JSON.",
     )
     parser.add_argument(
-        "--eval-config", type=Path, default=DEFAULT_EVAL_CONFIG,
+        "--eval-config",
+        type=Path,
+        default=DEFAULT_EVAL_CONFIG,
         help=f"Eval config YAML (default: {DEFAULT_EVAL_CONFIG.relative_to(PROJECT_ROOT)})",
     )
     args = parser.parse_args(argv)

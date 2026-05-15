@@ -4,6 +4,7 @@ The reference (training) corpus is treated as authoritative; any overlap is
 removed from the *target* (evaluation) corpus to preserve the integrity of the
 test set.
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,7 +13,6 @@ from typing import Iterable
 import pandas as pd
 
 from .deduplication import QHASH_COL
-
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,7 @@ def remove_overlap(
     """
     if QHASH_COL not in target.columns:
         raise ValueError(
-            f"target DataFrame is missing the {QHASH_COL!r} column; run "
-            f"src.data.deduplication.dedup first."
+            f"target DataFrame is missing the {QHASH_COL!r} column; run src.data.deduplication.dedup first."
         )
 
     reference_set = set(reference_hashes)
@@ -42,7 +41,9 @@ def remove_overlap(
 
     logger.info(
         "leakage[%s vs %s]: overlap=%d",
-        reference_name, target_name, n_overlap,
+        reference_name,
+        target_name,
+        n_overlap,
     )
 
     cleaned = target[~overlap_mask].reset_index(drop=True)
