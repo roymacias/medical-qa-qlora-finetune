@@ -4,7 +4,7 @@ type: peft_adapter
 base_model_id: google/gemma-3-4b-it
 tokenizer_id: google/gemma-3-4b-it
 # Path to the trained LoRA adapter directory (adapter_config.json +
-# adapter_model.safetensors). Produced by the §5 training pipeline.
+# adapter_model.safetensors). Produced by the training pipeline.
 adapter_path: artifacts/gemma-3-4b-it-qlora-finetune/adapter
 torch_dtype: bfloat16
 load_in_4bit: true

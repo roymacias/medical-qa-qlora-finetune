@@ -16,7 +16,6 @@ from the extraction script.
 From the repository root:
 
 ```bash
-pip install datasets
 python -m src.data.extract
 ```
 
